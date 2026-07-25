@@ -1,65 +1,160 @@
-import Image from "next/image";
+import Link from "next/link";
+import { db } from "@/lib/db";
+import { incomes, fixedExpenses, debts } from "@/lib/db/schema";
+import { debtMetrics, computeKpis, nextMonthProjection } from "@/lib/finance";
+import { fmt, pct, monthsToText } from "@/lib/format";
+import { PageHeader, Stat, Badge, EmptyState, Progress } from "@/components/ui";
+import { DashboardChart } from "@/components/DashboardChart";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const [inc, exp, deb] = await Promise.all([
+    db.select().from(incomes),
+    db.select().from(fixedExpenses),
+    db.select().from(debts),
+  ]);
+  const metrics = deb.map(debtMetrics);
+  const k = computeKpis(inc, exp, metrics);
+  const proj = nextMonthProjection(exp, metrics);
+
+  const empty = inc.length === 0 && exp.length === 0 && deb.length === 0;
+
+  const chartData = [
+    { name: "Egresos fijos", value: k.totalFixedExpenses, color: "#d97706" },
+    { name: "Pago de deudas", value: k.totalDebtPayment, color: "#dc2626" },
+    { name: "Disponible", value: Math.max(0, k.availableCashFlow), color: "#059669" },
+  ];
+
+  const healthTone = k.availableCashFlow < 0 ? "red" : k.committedRatio > 70 ? "amber" : "green";
+  const healthMsg =
+    k.availableCashFlow < 0
+      ? "⚠️ Tus gastos y deudas superan tus ingresos. Revisa tu plan de pago."
+      : k.committedRatio > 70
+      ? "Atención: comprometes más del 70% de tus ingresos. Margen ajustado."
+      : "Buen margen: tus ingresos cubren gastos y deudas con holgura.";
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div>
+      <PageHeader
+        title="Panel de finanzas"
+        subtitle="Resumen de tu situación financiera del mes."
+        action={
+          <Link href="/plan" className="btn btn-primary">
+            🎯 Ver plan de pago
+          </Link>
+        }
+      />
+
+      {empty ? (
+        <EmptyState
+          icon="👋"
+          title="¡Bienvenido! Empecemos a ordenar tus finanzas"
+          hint="Registra tus ingresos, egresos fijos y deudas para ver tus KPIs y tu plan de pago."
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      ) : (
+        <>
+          {/* KPIs principales */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Stat label="Ingresos mensuales" value={k.totalIncome} tone="green" />
+            <Stat label="Egresos fijos" value={k.totalFixedExpenses} tone="amber" />
+            <Stat label="Pago de deudas" value={k.totalDebtPayment} tone="red" hint="Cuotas + abonos extra" />
+            <Stat
+              label="Flujo disponible"
+              value={k.availableCashFlow}
+              tone={k.availableCashFlow >= 0 ? "green" : "red"}
+              hint="Ingresos − egresos − deudas"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          </div>
+
+          {/* Salud financiera */}
+          <div className="card mb-6" style={{ borderColor: `var(--${healthTone === "green" ? "green" : healthTone === "amber" ? "amber" : "red"})` }}>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="font-semibold">Salud financiera</div>
+              <Badge tone={healthTone}>
+                {k.availableCashFlow < 0 ? "En riesgo" : k.committedRatio > 70 ? "Ajustada" : "Saludable"}
+              </Badge>
+            </div>
+            <p className="text-sm text-[var(--muted)] mt-2">{healthMsg}</p>
+            <div className="mt-4">
+              <div className="flex justify-between text-xs text-[var(--muted)] mb-1">
+                <span>Ingreso comprometido (egresos + deudas)</span>
+                <span>{pct(k.committedRatio, 0)}</span>
+              </div>
+              <Progress value={k.committedRatio} tone={healthTone} />
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4 mb-6">
+            {/* Distribución del ingreso */}
+            <div className="card">
+              <div className="font-semibold mb-3">¿A dónde va tu ingreso?</div>
+              <DashboardChart data={chartData} />
+            </div>
+
+            {/* Indicadores de deuda */}
+            <div className="card">
+              <div className="font-semibold mb-4">Indicadores de deuda</div>
+              <div className="space-y-4">
+                <Row
+                  label="Deuda total pendiente"
+                  value={fmt(k.totalDebtBalance)}
+                  tone="red"
+                />
+                <Row
+                  label="Intereses por pagar (estimado)"
+                  value={fmt(k.totalInterestRemaining)}
+                  tone="red"
+                />
+                <Row
+                  label="Ratio de endeudamiento (DTI)"
+                  value={pct(k.dti, 1)}
+                  hint={k.dti > 40 ? "Alto (> 40%)" : k.dti > 30 ? "Moderado" : "Sano"}
+                  tone={k.dti > 40 ? "red" : k.dti > 30 ? "amber" : "green"}
+                />
+                <Row
+                  label="Libre de deudas en (cuotas mínimas)"
+                  value={monthsToText(k.monthsToDebtFree)}
+                />
+                <Row
+                  label="Pago estimado próximo mes"
+                  value={fmt(proj.total)}
+                  tone="amber"
+                />
+              </div>
+              <Link href="/plan" className="btn btn-ghost btn-sm mt-4">
+                Optimizar con el plan de pago →
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "default" | "green" | "red" | "amber";
+}) {
+  const color =
+    tone === "default"
+      ? "var(--text)"
+      : `var(--${tone})`;
+  return (
+    <div className="flex items-center justify-between gap-3 pb-3 border-b border-[var(--border)] last:border-0 last:pb-0">
+      <div className="text-sm text-[var(--muted)]">{label}</div>
+      <div className="text-right">
+        <div className="font-bold" style={{ color }}>{value}</div>
+        {hint && <div className="text-xs text-[var(--muted)]">{hint}</div>}
+      </div>
     </div>
   );
 }
