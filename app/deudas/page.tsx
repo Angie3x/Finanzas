@@ -36,11 +36,11 @@ function DebtForm({
       </div>
       <div>
         <label className="label">Monto / saldo total original (COP)</label>
-        <input name="principal" type="number" min="0" step="1000" required defaultValue={d?.principal} className="input" placeholder="10000000" />
+        <input name="principal" type="number" min="0" step="any" required defaultValue={d?.principal} className="input" placeholder="10000000" />
       </div>
       <div>
         <label className="label">Saldo a la fecha (opcional)</label>
-        <input name="currentBalance" type="number" min="0" step="1000" defaultValue={d?.currentBalance ?? ""} className="input" placeholder="Se calcula si lo dejas vacío" />
+        <input name="currentBalance" type="number" min="0" step="any" defaultValue={d?.currentBalance ?? ""} className="input" placeholder="Se calcula si lo dejas vacío" />
       </div>
       <div>
         <label className="label">Tasa de interés (%)</label>
@@ -64,11 +64,11 @@ function DebtForm({
       </div>
       <div>
         <label className="label">Valor de la cuota (opcional)</label>
-        <input name="installmentAmount" type="number" min="0" step="1000" defaultValue={d?.installmentAmount ?? ""} className="input" placeholder="Se calcula si lo dejas vacío" />
+        <input name="installmentAmount" type="number" min="0" step="any" defaultValue={d?.installmentAmount ?? ""} className="input" placeholder="Se calcula si lo dejas vacío" />
       </div>
       <div>
         <label className="label">Abono extra mensual (opcional)</label>
-        <input name="extraPayment" type="number" min="0" step="1000" defaultValue={d?.extraPayment || ""} className="input" placeholder="Monto adicional fijo a esta deuda" />
+        <input name="extraPayment" type="number" min="0" step="any" defaultValue={d?.extraPayment || ""} className="input" placeholder="Monto adicional fijo a esta deuda" />
       </div>
       <div>
         <label className="label">Día de pago (opcional)</label>
@@ -178,7 +178,7 @@ export default async function DeudasPage() {
                           name="amount"
                           type="number"
                           min="0"
-                          step="1000"
+                          step="any"
                           defaultValue={Math.round(m.effectivePayment)}
                           className="input"
                         />

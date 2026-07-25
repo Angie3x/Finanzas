@@ -86,7 +86,7 @@ export default async function PlanPage({
                     name="extra"
                     type="number"
                     min="0"
-                    step="50000"
+                    step="any"
                     defaultValue={extra}
                     className="input"
                     style={{ width: 180 }}

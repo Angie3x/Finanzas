@@ -33,7 +33,7 @@ export default async function IngresosPage() {
           </div>
           <div>
             <label className="label">Monto mensual (COP)</label>
-            <input name="amount" type="number" min="0" step="1000" required className="input" placeholder="3500000" />
+            <input name="amount" type="number" min="0" step="any" required className="input" placeholder="3500000" />
           </div>
           <div className="sm:col-span-2">
             <button className="btn btn-primary">Guardar ingreso</button>
@@ -65,7 +65,7 @@ export default async function IngresosPage() {
                   </div>
                   <div>
                     <label className="label">Monto mensual (COP)</label>
-                    <input name="amount" type="number" min="0" step="1000" defaultValue={r.amount} required className="input" />
+                    <input name="amount" type="number" min="0" step="any" defaultValue={r.amount} required className="input" />
                   </div>
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" name="active" defaultChecked={r.active} /> Activo

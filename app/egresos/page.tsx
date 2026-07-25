@@ -44,7 +44,7 @@ export default async function EgresosPage() {
           </div>
           <div>
             <label className="label">Monto mensual (COP)</label>
-            <input name="amount" type="number" min="0" step="1000" required className="input" placeholder="1200000" />
+            <input name="amount" type="number" min="0" step="any" required className="input" placeholder="1200000" />
           </div>
           <div>
             <label className="label">Categoría</label>
@@ -90,7 +90,7 @@ export default async function EgresosPage() {
                   </div>
                   <div>
                     <label className="label">Monto mensual (COP)</label>
-                    <input name="amount" type="number" min="0" step="1000" defaultValue={r.amount} required className="input" />
+                    <input name="amount" type="number" min="0" step="any" defaultValue={r.amount} required className="input" />
                   </div>
                   <div>
                     <label className="label">Categoría</label>
