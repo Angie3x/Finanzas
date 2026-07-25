@@ -10,6 +10,7 @@ import { fmt, pct } from "@/lib/format";
 import { debtMetrics, sum } from "@/lib/finance";
 import { PageHeader, Stat, EmptyState, Badge, Progress } from "@/components/ui";
 import { DeleteButton } from "@/components/DeleteButton";
+import { CancelButton } from "@/components/CancelButton";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,7 @@ function DebtForm({
       </div>
       <div className="sm:col-span-2 flex gap-2">
         <button className="btn btn-primary">{d ? "Actualizar deuda" : "Guardar deuda"}</button>
+        <CancelButton />
       </div>
     </form>
   );
@@ -213,7 +215,10 @@ export default async function DeudasPage() {
                             <> No incluyas aquí el seguro (<b>{fmt(m.insurance)}</b>): no abona a capital.</>
                           )}
                         </p>
-                        <button className="btn btn-primary btn-sm mt-3">Guardar pago</button>
+                        <div className="flex gap-2 mt-3">
+                          <button className="btn btn-primary btn-sm">Guardar pago</button>
+                          <CancelButton className="btn btn-ghost btn-sm" />
+                        </div>
                       </form>
                     </details>
                   )}

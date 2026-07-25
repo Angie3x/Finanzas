@@ -5,6 +5,7 @@ import { fmt } from "@/lib/format";
 import { sum } from "@/lib/finance";
 import { PageHeader, Stat, EmptyState, Badge } from "@/components/ui";
 import { DeleteButton } from "@/components/DeleteButton";
+import { CancelButton } from "@/components/CancelButton";
 
 export const dynamic = "force-dynamic";
 
@@ -58,8 +59,9 @@ export default async function EgresosPage() {
             <label className="label">Día de pago (opcional)</label>
             <input name="dueDay" type="number" min="1" max="31" className="input" placeholder="5" />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 flex gap-2">
             <button className="btn btn-primary">Guardar egreso</button>
+            <CancelButton />
           </div>
         </form>
       </details>
@@ -107,8 +109,9 @@ export default async function EgresosPage() {
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" name="active" defaultChecked={r.active} /> Activo
                   </label>
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-2 flex gap-2">
                     <button className="btn btn-primary btn-sm">Actualizar</button>
+                    <CancelButton className="btn btn-ghost btn-sm" />
                   </div>
                 </form>
                 <div className="mt-2">

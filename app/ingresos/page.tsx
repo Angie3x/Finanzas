@@ -5,6 +5,7 @@ import { fmt } from "@/lib/format";
 import { sum } from "@/lib/finance";
 import { PageHeader, Stat, EmptyState, Badge } from "@/components/ui";
 import { DeleteButton } from "@/components/DeleteButton";
+import { CancelButton } from "@/components/CancelButton";
 
 export const dynamic = "force-dynamic";
 
@@ -35,8 +36,9 @@ export default async function IngresosPage() {
             <label className="label">Monto mensual (COP)</label>
             <input name="amount" type="number" min="0" step="any" required className="input" placeholder="3500000" />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 flex gap-2">
             <button className="btn btn-primary">Guardar ingreso</button>
+            <CancelButton />
           </div>
         </form>
       </details>
@@ -70,8 +72,9 @@ export default async function IngresosPage() {
                   <label className="flex items-center gap-2 text-sm">
                     <input type="checkbox" name="active" defaultChecked={r.active} /> Activo
                   </label>
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-2 flex gap-2">
                     <button className="btn btn-primary btn-sm">Actualizar</button>
+                    <CancelButton className="btn btn-ghost btn-sm" />
                   </div>
                 </form>
                 <div className="mt-2">
