@@ -58,7 +58,7 @@ export default async function Home() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Stat label="Ingresos mensuales" value={k.totalIncome} tone="green" />
             <Stat label="Egresos fijos" value={k.totalFixedExpenses} tone="amber" />
-            <Stat label="Pago de deudas" value={k.totalDebtPayment} tone="red" hint="Cuotas + abonos extra" />
+            <Stat label="Pago de deudas" value={k.totalDebtPayment} tone="red" hint="Cuotas + seguro + abonos extra" />
             <Stat
               label="Flujo disponible"
               value={k.availableCashFlow}

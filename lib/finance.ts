@@ -25,6 +25,24 @@ export function computeInstallment(P: number, i: number, n: number): number {
   return (P * i) / (1 - Math.pow(1 + i, -n));
 }
 
+/**
+ * Seguro mensual del crédito según su modalidad.
+ * - "fijo": monto fijo en COP por mes.
+ * - "saldo": tasa mensual (%) aplicada al saldo pendiente (baja con el saldo).
+ * - "none": sin seguro.
+ * No abona a capital: es un costo adicional que se paga junto a la cuota.
+ */
+export function monthlyInsurance(
+  kind: Debt["insuranceKind"],
+  value: number,
+  balance: number
+): number {
+  const v = Math.max(0, value ?? 0);
+  if (kind === "fijo") return v;
+  if (kind === "saldo") return Math.max(0, balance) * (v / 100);
+  return 0;
+}
+
 /** Saldo restante tras k pagos de una cuota fija A. */
 export function remainingBalance(P: number, i: number, A: number, k: number): number {
   if (k <= 0) return P;
@@ -48,9 +66,13 @@ export type DebtMetrics = {
   type: Debt["type"];
   monthlyRate: number; // tasa mensual efectiva (decimal)
   annualEffective: number; // tasa efectiva anual (decimal) para comparar
-  installment: number; // valor de la cuota
+  installment: number; // valor de la cuota (solo amortización)
   extra: number; // abono extra fijo mensual asignado a esta deuda
-  effectivePayment: number; // pago mensual real previsto (cuota + extra, tope al saldo)
+  effectivePayment: number; // pago de amortización previsto (cuota + extra, tope al saldo)
+  insurance: number; // seguro estimado del mes (sobre el saldo actual)
+  monthlyOutflow: number; // salida de caja mensual real = amortización + seguro
+  insuranceKind: Debt["insuranceKind"]; // modalidad del seguro
+  insuranceValue: number; // COP (fijo) o % mensual (saldo)
   balance: number; // saldo a la fecha
   paidInstallments: number;
   totalInstallments: number;
@@ -84,6 +106,11 @@ export function debtMetrics(d: Debt): DebtMetrics {
   const nextPrincipal = Math.max(0, nextPayment - nextInterest);
   const effectivePayment =
     pending > 0 || balance > 0 ? Math.min(installment + extra, balance + nextInterest) : 0;
+  const insurance =
+    pending > 0 || balance > 0
+      ? monthlyInsurance(d.insuranceKind, d.insuranceValue, balance)
+      : 0;
+  const monthlyOutflow = effectivePayment + insurance;
   const totalRemaining = pending > 0 ? installment * pending : 0;
 
   return {
@@ -95,6 +122,10 @@ export function debtMetrics(d: Debt): DebtMetrics {
     installment,
     extra,
     effectivePayment,
+    insurance,
+    monthlyOutflow,
+    insuranceKind: d.insuranceKind,
+    insuranceValue: d.insuranceValue,
     balance,
     paidInstallments: paid,
     totalInstallments: n,
@@ -132,7 +163,7 @@ export function computeKpis(
   const totalIncome = sum(incomes.filter((x) => x.active).map((x) => x.amount));
   const totalFixedExpenses = sum(expenses.filter((x) => x.active).map((x) => x.amount));
   const active = metrics.filter((m) => m.pendingInstallments > 0);
-  const totalDebtPayment = sum(active.map((m) => m.effectivePayment));
+  const totalDebtPayment = sum(active.map((m) => m.monthlyOutflow));
   const totalDebtBalance = sum(metrics.map((m) => m.balance));
   const totalInterestRemaining = sum(metrics.map((m) => m.interestRemaining));
   const availableCashFlow = totalIncome - totalFixedExpenses - totalDebtPayment;
@@ -185,7 +216,10 @@ type SimDebt = {
   balance: number;
   installment: number;
   extra: number;
+  insuranceKind: Debt["insuranceKind"];
+  insuranceValue: number;
   interestPaid: number;
+  insurancePaid: number;
   payoffMonth: number;
 };
 
@@ -209,7 +243,10 @@ export function simulatePlan(
       balance: m.balance,
       installment: m.installment,
       extra: m.extra,
+      insuranceKind: m.insuranceKind,
+      insuranceValue: m.insuranceValue,
       interestPaid: 0,
+      insurancePaid: 0,
       payoffMonth: 0,
     }));
 
@@ -231,11 +268,15 @@ export function simulatePlan(
     );
     let extraPool = Math.max(0, extraBudget) + freed;
 
-    // 1) Aplicar intereses y (cuota + abono extra fijo de la deuda) a cada deuda con saldo.
+    // 1) Aplicar intereses, seguro y (cuota + abono extra fijo de la deuda) a cada deuda con saldo.
     for (const d of debts) {
       if (d.balance <= 0.01) continue;
       const interest = d.balance * d.i;
       d.interestPaid += interest;
+      // Seguro sobre el saldo al inicio del mes; es costo, no abona a capital.
+      const insurance = monthlyInsurance(d.insuranceKind, d.insuranceValue, d.balance);
+      d.insurancePaid += insurance;
+      paidThisMonth += insurance;
       const pay = Math.min(d.installment + d.extra, d.balance + interest);
       d.balance = d.balance + interest - pay;
       paidThisMonth += pay;
@@ -299,12 +340,13 @@ export function nextMonthProjection(
   for (const m of metrics) {
     if (m.pendingInstallments > 0) {
       const extraNote = m.extra > 0 ? ` · incluye abono extra` : "";
+      const insNote = m.insurance > 0 ? ` · incluye seguro` : "";
       items.push({
         kind: "deuda",
         name: m.name,
-        amount: m.effectivePayment,
+        amount: m.monthlyOutflow,
         dueDay: m.dueDay,
-        detail: `Cuota ${m.paidInstallments + 1} de ${m.totalInstallments}${extraNote}`,
+        detail: `Cuota ${m.paidInstallments + 1} de ${m.totalInstallments}${extraNote}${insNote}`,
       });
     }
   }

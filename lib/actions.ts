@@ -103,6 +103,9 @@ export async function createDebt(formData: FormData) {
     totalInstallments: Math.max(1, num(formData.get("totalInstallments"), 1)),
     paidInstallments: Math.max(0, num(formData.get("paidInstallments"), 0)),
     installmentAmount: num(formData.get("installmentAmount")) || null,
+    insuranceKind:
+      (str(formData.get("insuranceKind")) as "none" | "fijo" | "saldo") || "none",
+    insuranceValue: Math.max(0, num(formData.get("insuranceValue"), 0)),
     extraPayment: Math.max(0, num(formData.get("extraPayment"), 0)),
     currentBalance:
       String(formData.get("currentBalance") ?? "").trim() === ""
@@ -133,6 +136,9 @@ export async function updateDebt(formData: FormData) {
       totalInstallments: Math.max(1, num(formData.get("totalInstallments"), 1)),
       paidInstallments: Math.max(0, num(formData.get("paidInstallments"), 0)),
       installmentAmount: num(formData.get("installmentAmount")) || null,
+      insuranceKind:
+        (str(formData.get("insuranceKind")) as "none" | "fijo" | "saldo") || "none",
+      insuranceValue: Math.max(0, num(formData.get("insuranceValue"), 0)),
       extraPayment: Math.max(0, num(formData.get("extraPayment"), 0)),
       currentBalance:
         String(formData.get("currentBalance") ?? "").trim() === ""

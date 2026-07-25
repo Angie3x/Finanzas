@@ -67,6 +67,21 @@ function DebtForm({
         <input name="installmentAmount" type="number" min="0" step="any" defaultValue={d?.installmentAmount ?? ""} className="input" placeholder="Se calcula si lo dejas vacío" />
       </div>
       <div>
+        <label className="label">Seguro</label>
+        <select name="insuranceKind" className="select" defaultValue={d?.insuranceKind ?? "none"}>
+          <option value="none">Sin seguro</option>
+          <option value="fijo">Valor fijo mensual (COP)</option>
+          <option value="saldo">% mensual sobre el saldo</option>
+        </select>
+      </div>
+      <div>
+        <label className="label">Valor del seguro</label>
+        <input name="insuranceValue" type="number" min="0" step="any" defaultValue={d?.insuranceValue || ""} className="input" placeholder="COP si es fijo · % mensual si es sobre saldo (ej. 0.3)" />
+        <p className="text-xs text-[var(--muted)] mt-1">
+          Fijo: monto en pesos. Sobre saldo: tasa mensual (ej. 0.3 = 0,3% del saldo).
+        </p>
+      </div>
+      <div>
         <label className="label">Abono extra mensual (opcional)</label>
         <input name="extraPayment" type="number" min="0" step="any" defaultValue={d?.extraPayment || ""} className="input" placeholder="Monto adicional fijo a esta deuda" />
       </div>
@@ -85,7 +100,7 @@ export default async function DeudasPage() {
   const rows = await db.select().from(debts);
   const metrics = rows.map(debtMetrics);
   const totalBalance = sum(metrics.map((m) => m.balance));
-  const totalPayment = sum(metrics.filter((m) => m.pendingInstallments > 0).map((m) => m.effectivePayment));
+  const totalPayment = sum(metrics.filter((m) => m.pendingInstallments > 0).map((m) => m.monthlyOutflow));
   const totalInterest = sum(metrics.map((m) => m.interestRemaining));
 
   return (
@@ -97,7 +112,7 @@ export default async function DeudasPage() {
 
       <div className="grid sm:grid-cols-3 gap-4 mb-6">
         <Stat label="Deuda total pendiente" value={totalBalance} tone="red" />
-        <Stat label="Pago mensual de deudas" value={totalPayment} tone="amber" hint="Cuotas + abonos extra" />
+        <Stat label="Pago mensual de deudas" value={totalPayment} tone="amber" hint="Cuotas + seguro + abonos extra" />
         <Stat label="Intereses por pagar" value={totalInterest} tone="red" hint="Estimado sobre cuotas pendientes" />
       </div>
 
@@ -138,8 +153,14 @@ export default async function DeudasPage() {
                   <div>
                     <div className="text-[var(--muted)] text-xs">Cuota mensual</div>
                     <div className="font-semibold">{fmt(m.installment)}</div>
+                    {m.insurance > 0 && (
+                      <div className="text-xs text-[var(--amber)]">+ {fmt(m.insurance)} seguro</div>
+                    )}
                     {m.extra > 0 && (
                       <div className="text-xs text-[var(--green)]">+ {fmt(m.extra)} extra</div>
+                    )}
+                    {(m.insurance > 0 || m.extra > 0) && (
+                      <div className="text-xs text-[var(--muted)] mt-0.5">= {fmt(m.monthlyOutflow)} total</div>
                     )}
                   </div>
                   <div>
@@ -188,6 +209,9 @@ export default async function DeudasPage() {
                         </label>
                         <p className="text-xs text-[var(--muted)] mt-2">
                           Interés de este mes: <b>{fmt(m.nextInterest)}</b>. El resto abona a capital y baja tu saldo.
+                          {m.insurance > 0 && (
+                            <> No incluyas aquí el seguro (<b>{fmt(m.insurance)}</b>): no abona a capital.</>
+                          )}
                         </p>
                         <button className="btn btn-primary btn-sm mt-3">Guardar pago</button>
                       </form>

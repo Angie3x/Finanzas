@@ -42,6 +42,11 @@ export const debts = sqliteTable("debts", {
   totalInstallments: integer("total_installments").notNull().default(1), // cuotas totales
   paidInstallments: integer("paid_installments").notNull().default(0), // cuotas pagadas
   installmentAmount: real("installment_amount"), // valor de la cuota (si se conoce; si no, se calcula)
+  // Seguro asociado al crédito (vida/cartera). No abona a capital.
+  insuranceKind: text("insurance_kind", { enum: ["none", "fijo", "saldo"] })
+    .notNull()
+    .default("none"), // none = sin seguro; fijo = COP/mes; saldo = % mensual sobre el saldo
+  insuranceValue: real("insurance_value").notNull().default(0), // COP (fijo) o % mensual (saldo)
   extraPayment: real("extra_payment").notNull().default(0), // abono extra fijo mensual asignado a esta deuda
   currentBalance: real("current_balance"), // saldo a la fecha (si se conoce; si no, se calcula)
   dueDay: integer("due_day"), // día del mes de pago (1-31), opcional
