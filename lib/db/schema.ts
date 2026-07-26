@@ -97,8 +97,32 @@ export const debts = sqliteTable("debts", {
     .default(sql`(datetime('now'))`),
 });
 
+/**
+ * Ledger de pagos de deuda por mes ("YYYY-MM").
+ * `amount` = pago a la cuota (interés + capital); `insurance` = seguro del mes.
+ * La salida de caja del mes = amount + insurance. `prevBalance`/`prevPaid`
+ * guardan el estado anterior de la deuda para poder deshacer el pago.
+ */
+export const debtPayments = sqliteTable("debt_payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  month: text("month").notNull(), // "YYYY-MM"
+  debtId: integer("debt_id")
+    .notNull()
+    .references(() => debts.id, { onDelete: "cascade" }),
+  amount: real("amount").notNull(), // pago a la cuota (no incluye seguro)
+  insurance: real("insurance").notNull().default(0), // seguro del mes
+  counts: integer("counts", { mode: "boolean" }).notNull().default(true), // avanzó cuota
+  prevBalance: real("prev_balance"), // saldo previo (para deshacer); null = se calculaba
+  prevPaid: integer("prev_paid").notNull().default(0), // cuotas pagadas previas
+  paidAt: text("paid_at"), // fecha del pago (ISO), opcional
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 export type Income = typeof incomes.$inferSelect;
 export type FixedExpense = typeof fixedExpenses.$inferSelect;
 export type Debt = typeof debts.$inferSelect;
 export type IncomeReceipt = typeof incomeReceipts.$inferSelect;
 export type ExpensePayment = typeof expensePayments.$inferSelect;
+export type DebtPayment = typeof debtPayments.$inferSelect;

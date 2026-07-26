@@ -6,11 +6,14 @@ import {
   fixedExpenses,
   incomeReceipts,
   expensePayments,
+  debts,
+  debtPayments,
 } from "@/lib/db/schema";
 import { fmt, pct } from "@/lib/format";
 import {
   netIncome,
   prestacionesAmount,
+  debtMetrics,
   addMonths,
   monthLabel,
   normalizeMonth,
@@ -25,6 +28,8 @@ import {
   deleteIncomeReceipt,
   registerExpensePayment,
   deleteExpensePayment,
+  registerPayment,
+  deleteDebtPayment,
 } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
@@ -37,15 +42,25 @@ export default async function MesPage({
   const { mes } = await searchParams;
   const month = normalizeMonth(mes);
 
-  const [incDefs, expDefs, receipts, payments] = await Promise.all([
-    db.select().from(incomes),
-    db.select().from(fixedExpenses),
-    db.select().from(incomeReceipts).where(eq(incomeReceipts.month, month)),
-    db.select().from(expensePayments).where(eq(expensePayments.month, month)),
-  ]);
+  const [incDefs, expDefs, debtDefs, receipts, payments, debtPays] =
+    await Promise.all([
+      db.select().from(incomes),
+      db.select().from(fixedExpenses),
+      db.select().from(debts),
+      db.select().from(incomeReceipts).where(eq(incomeReceipts.month, month)),
+      db.select().from(expensePayments).where(eq(expensePayments.month, month)),
+      db.select().from(debtPayments).where(eq(debtPayments.month, month)),
+    ]);
 
   const activeInc = incDefs.filter((i) => i.active);
   const activeExp = expDefs.filter((e) => e.active);
+  const debtMx = debtDefs.map(debtMetrics).filter((m) => m.pendingInstallments > 0 || m.balance > 0);
+  const debtPaysByDebt = new Map<number, typeof debtPays>();
+  for (const p of debtPays) {
+    const list = debtPaysByDebt.get(p.debtId) ?? [];
+    list.push(p);
+    debtPaysByDebt.set(p.debtId, list);
+  }
 
   const receiptByIncome = new Map<number, (typeof receipts)[number]>();
   const occasional: typeof receipts = [];
@@ -62,15 +77,21 @@ export default async function MesPage({
   }
 
   const totalReceived = sum(receipts.map((r) => r.amount));
-  const totalPaid = sum(payments.map((p) => p.amount));
-  const totalExpenses = sum(activeExp.map((e) => e.amount));
+  const expensesPaid = sum(payments.map((p) => p.amount));
+  const debtPaidCash = sum(debtPays.map((p) => p.amount + p.insurance));
+  const totalPaid = expensesPaid + debtPaidCash;
+
+  const expensesCommitment = sum(activeExp.map((e) => e.amount));
+  const debtCommitment = sum(debtMx.map((m) => m.monthlyOutflow));
+  const totalCommitments = expensesCommitment + debtCommitment;
+
   const disponible = totalReceived - totalPaid;
-  const pendiente = totalExpenses - totalPaid;
-  const paidPct = totalExpenses > 0 ? (totalPaid / totalExpenses) * 100 : 0;
+  const pendiente = totalCommitments - totalPaid;
+  const paidPct = totalCommitments > 0 ? (totalPaid / totalCommitments) * 100 : 0;
 
   const prev = addMonths(month, -1);
   const next = addMonths(month, 1);
-  const noDefs = activeInc.length === 0 && activeExp.length === 0;
+  const noDefs = activeInc.length === 0 && activeExp.length === 0 && debtMx.length === 0;
 
   return (
     <div>
@@ -103,7 +124,7 @@ export default async function MesPage({
       {/* Resumen del mes */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
         <Stat label="Recibido este mes" value={totalReceived} tone="green" />
-        <Stat label="Egresos del mes" value={totalExpenses} tone="amber" hint="Suma de egresos activos" />
+        <Stat label="Compromisos del mes" value={totalCommitments} tone="amber" hint="Egresos + deudas" />
         <Stat label="Pagado hasta ahora" value={totalPaid} />
         <Stat
           label="Disponible ahora"
@@ -115,9 +136,9 @@ export default async function MesPage({
 
       <div className="card mb-6">
         <div className="flex justify-between text-xs text-[var(--muted)] mb-1">
-          <span>Progreso de pago de egresos</span>
+          <span>Progreso de pago (egresos + deudas)</span>
           <span>
-            {fmt(totalPaid)} / {fmt(totalExpenses)} · pendiente {fmt(Math.max(0, pendiente))}
+            {fmt(totalPaid)} / {fmt(totalCommitments)} · pendiente {fmt(Math.max(0, pendiente))}
           </span>
         </div>
         <Progress value={paidPct} tone="green" />
@@ -315,6 +336,89 @@ export default async function MesPage({
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {!noDefs && debtMx.length > 0 && (
+        <div className="card mt-4">
+          <div className="font-semibold mb-4">💳 Deudas del mes</div>
+          <div className="space-y-3">
+            {debtMx.map((m) => {
+              const pays = debtPaysByDebt.get(m.id) ?? [];
+              const isPaid = pays.length > 0;
+              const paidCash = sum(pays.map((p) => p.amount + p.insurance));
+              return (
+                <div key={m.id} className="border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div>
+                      <div className="font-medium flex items-center gap-2 flex-wrap">
+                        {m.name}
+                        {isPaid && <Badge tone="green">✓ Pagada este mes</Badge>}
+                      </div>
+                      <div className="text-xs text-[var(--muted)]">
+                        Saldo {fmt(m.balance)} · cuota {m.paidInstallments}/{m.totalInstallments}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-semibold ${isPaid ? "text-[var(--muted)] line-through" : ""}`}>
+                        {fmt(m.monthlyOutflow)}
+                      </div>
+                      <div className="text-xs text-[var(--muted)]">
+                        cuota {fmt(m.effectivePayment)}
+                        {m.insurance > 0 ? ` + seguro ${fmt(m.insurance)}` : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  {isPaid ? (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-[var(--green)]">Pagado {fmt(paidCash)}</span>
+                      {pays.map((p) => (
+                        <form key={p.id} action={deleteDebtPayment}>
+                          <input type="hidden" name="id" value={p.id} />
+                          <button className="btn btn-ghost btn-sm">↩︎ Deshacer</button>
+                        </form>
+                      ))}
+                    </div>
+                  ) : (
+                    <details className="mt-2">
+                      <summary className="btn btn-ghost btn-sm list-none inline-block">💵 Registrar pago</summary>
+                      <form action={registerPayment} className="flex items-end gap-2 mt-2 flex-wrap">
+                        <input type="hidden" name="month" value={month} />
+                        <input type="hidden" name="id" value={m.id} />
+                        <div>
+                          <label className="label">Pago a la cuota (COP)</label>
+                          <input
+                            name="amount"
+                            type="number"
+                            min="0"
+                            step="any"
+                            defaultValue={Math.round(m.effectivePayment)}
+                            className="input"
+                            style={{ width: 160 }}
+                          />
+                        </div>
+                        <div>
+                          <label className="label">Fecha (opcional)</label>
+                          <input name="paidAt" type="date" className="input" />
+                        </div>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" name="counts" defaultChecked /> Cuenta como cuota
+                        </label>
+                        <button className="btn btn-primary btn-sm">Registrar</button>
+                        <CancelButton className="btn btn-ghost btn-sm" />
+                      </form>
+                      {m.insurance > 0 && (
+                        <p className="text-xs text-[var(--muted)] mt-1">
+                          El seguro del mes ({fmt(m.insurance)}) se suma a tu salida de caja; no lo incluyas en el pago a la cuota.
+                        </p>
+                      )}
+                    </details>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

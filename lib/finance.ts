@@ -409,6 +409,13 @@ export function monthLabel(month: string): string {
   });
 }
 
+/** Etiqueta corta de un mes: "jul 26". */
+export function monthLabelShort(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  const mon = new Date(y, m - 1, 1).toLocaleDateString("es-CO", { month: "short" });
+  return `${mon.replace(".", "")} ${String(y).slice(2)}`;
+}
+
 /** Valida un "YYYY-MM"; si no es válido, devuelve el mes actual. */
 export function normalizeMonth(month: string | undefined | null): string {
   return month && /^\d{4}-\d{2}$/.test(month) ? month : currentMonth();

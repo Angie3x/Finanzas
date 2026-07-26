@@ -9,11 +9,13 @@ import {
   debts,
   incomeReceipts,
   expensePayments,
+  debtPayments,
 } from "./db/schema";
 import {
   monthlyRate,
   computeInstallment,
   remainingBalance,
+  monthlyInsurance,
   normalizeMonth,
 } from "./finance";
 
@@ -260,6 +262,8 @@ export async function registerPayment(formData: FormData) {
   const id = num(formData.get("id"));
   const amount = Math.max(0, num(formData.get("amount")));
   const counts = str(formData.get("counts")) === "on";
+  const month = normalizeMonth(str(formData.get("month")));
+  const paidAt = str(formData.get("paidAt")) || null;
 
   const rows = await db.select().from(debts).where(eq(debts.id, id));
   const d = rows[0];
@@ -280,20 +284,60 @@ export async function registerPayment(formData: FormData) {
   const paid = counts
     ? Math.min(d.paidInstallments + 1, d.totalInstallments)
     : d.paidInstallments;
+  // Seguro del mes calculado sobre el saldo antes del pago.
+  const insurance = monthlyInsurance(d.insuranceKind, d.insuranceValue, balance);
 
   await db
     .update(debts)
     .set({ currentBalance: newBalance, paidInstallments: paid })
     .where(eq(debts.id, id));
 
+  // Registro en el ledger del mes (para el disponible y el historial).
+  await db.insert(debtPayments).values({
+    month,
+    debtId: id,
+    amount,
+    insurance,
+    counts,
+    prevBalance: d.currentBalance, // estado previo para deshacer (puede ser null)
+    prevPaid: d.paidInstallments,
+    paidAt,
+  });
+
   revalidatePath("/deudas");
   revalidatePath("/plan");
+  revalidatePath("/mes");
+  revalidatePath("/historial");
+  revalidatePath("/");
+}
+
+/** Deshace un pago de deuda: restaura saldo/cuotas previos y borra el registro. */
+export async function deleteDebtPayment(formData: FormData) {
+  const payId = num(formData.get("id"));
+  const rows = await db.select().from(debtPayments).where(eq(debtPayments.id, payId));
+  const p = rows[0];
+  if (!p) return;
+
+  await db
+    .update(debts)
+    .set({ currentBalance: p.prevBalance, paidInstallments: p.prevPaid })
+    .where(eq(debts.id, p.debtId));
+  await db.delete(debtPayments).where(eq(debtPayments.id, payId));
+
+  revalidatePath("/deudas");
+  revalidatePath("/plan");
+  revalidatePath("/mes");
+  revalidatePath("/historial");
   revalidatePath("/");
 }
 
 export async function deleteDebt(formData: FormData) {
-  await db.delete(debts).where(eq(debts.id, num(formData.get("id"))));
+  const id = num(formData.get("id"));
+  await db.delete(debtPayments).where(eq(debtPayments.debtId, id));
+  await db.delete(debts).where(eq(debts.id, id));
   revalidatePath("/deudas");
   revalidatePath("/plan");
+  revalidatePath("/mes");
+  revalidatePath("/historial");
   revalidatePath("/");
 }
