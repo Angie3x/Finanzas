@@ -53,7 +53,6 @@ export async function createIncome(formData: FormData) {
     prestacionesRate: kind === "salario_base" ? rate(formData.get("prestacionesRate")) : 0,
     active: true,
   });
-  revalidatePath("/ingresos");
   revalidatePath("/mes");
   revalidatePath("/");
 }
@@ -71,7 +70,6 @@ export async function updateIncome(formData: FormData) {
       active: str(formData.get("active")) === "on",
     })
     .where(eq(incomes.id, id));
-  revalidatePath("/ingresos");
   revalidatePath("/mes");
   revalidatePath("/");
 }
@@ -80,7 +78,6 @@ export async function deleteIncome(formData: FormData) {
   const id = num(formData.get("id"));
   await db.delete(incomeReceipts).where(eq(incomeReceipts.incomeId, id));
   await db.delete(incomes).where(eq(incomes.id, id));
-  revalidatePath("/ingresos");
   revalidatePath("/mes");
   revalidatePath("/");
 }
@@ -135,7 +132,7 @@ export async function createExpense(formData: FormData) {
     dueDay: intOrNull(formData.get("dueDay")),
     active: true,
   });
-  revalidatePath("/egresos");
+  revalidatePath("/deudas");
   revalidatePath("/mes");
   revalidatePath("/");
 }
@@ -152,7 +149,7 @@ export async function updateExpense(formData: FormData) {
       active: str(formData.get("active")) === "on",
     })
     .where(eq(fixedExpenses.id, id));
-  revalidatePath("/egresos");
+  revalidatePath("/deudas");
   revalidatePath("/mes");
   revalidatePath("/");
 }
@@ -161,7 +158,7 @@ export async function deleteExpense(formData: FormData) {
   const id = num(formData.get("id"));
   await db.delete(expensePayments).where(eq(expensePayments.expenseId, id));
   await db.delete(fixedExpenses).where(eq(fixedExpenses.id, id));
-  revalidatePath("/egresos");
+  revalidatePath("/deudas");
   revalidatePath("/mes");
   revalidatePath("/");
 }

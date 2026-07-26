@@ -394,20 +394,23 @@ export function currentMonth(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** Fecha de hoy en formato "YYYY-MM-DD" (hora local). */
-export function todayISO(d = new Date()): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+/** Fecha de hoy "YYYY-MM-DD" en la zona horaria de Bogotá (America/Bogota). */
+export function todayISO(): string {
+  // en-CA da el formato "YYYY-MM-DD"; forzamos la zona de Bogotá.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
-/** Etiqueta corta de fecha ISO "YYYY-MM-DD" → "25 jul". */
+/** Etiqueta de fecha ISO "YYYY-MM-DD" → "26/07/2026". */
 export function dateLabel(iso: string | null | undefined): string {
   if (!iso) return "";
   const [y, m, d] = iso.split("-").map(Number);
   if (!y || !m || !d) return "";
-  const mon = new Date(y, m - 1, d).toLocaleDateString("es-CO", { month: "short" });
-  return `${d} ${mon.replace(".", "")}`;
+  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
 }
 
 /** Suma (o resta) meses a un "YYYY-MM" y devuelve el nuevo "YYYY-MM". */

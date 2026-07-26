@@ -208,9 +208,8 @@ export default async function PlanPage({
 
       <p className="text-xs text-[var(--muted)] mt-6">
         ¿Faltan datos? Ajusta tus{" "}
-        <Link href="/ingresos" className="underline">ingresos</Link>,{" "}
-        <Link href="/egresos" className="underline">egresos</Link> o{" "}
-        <Link href="/deudas" className="underline">deudas</Link>.
+        <Link href="/mes" className="underline">ingresos</Link> o tus{" "}
+        <Link href="/deudas" className="underline">egresos y deudas</Link>.
       </p>
     </div>
   );

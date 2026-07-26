@@ -1,18 +1,33 @@
 import { db } from "@/lib/db";
-import { debts } from "@/lib/db/schema";
+import { debts, fixedExpenses } from "@/lib/db/schema";
 import {
   createDebt,
   updateDebt,
   deleteDebt,
   registerPayment,
+  createExpense,
+  updateExpense,
+  deleteExpense,
 } from "@/lib/actions";
 import { fmt, pct } from "@/lib/format";
 import { debtMetrics, sum } from "@/lib/finance";
 import { PageHeader, Stat, EmptyState, Badge, Progress } from "@/components/ui";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CancelButton } from "@/components/CancelButton";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export const dynamic = "force-dynamic";
+
+const CATEGORIES = [
+  "Vivienda",
+  "Servicios",
+  "Alimentación",
+  "Transporte",
+  "Suscripciones",
+  "Salud",
+  "Educación",
+  "General",
+];
 
 function DebtForm({
   action,
@@ -91,7 +106,50 @@ function DebtForm({
         <input name="dueDay" type="number" min="1" max="31" defaultValue={d?.dueDay ?? ""} className="input" placeholder="15" />
       </div>
       <div className="sm:col-span-2 flex gap-2">
-        <button className="btn btn-primary">{d ? "Actualizar deuda" : "Guardar deuda"}</button>
+        <SubmitButton className="btn btn-primary">{d ? "Actualizar deuda" : "Guardar deuda"}</SubmitButton>
+        <CancelButton />
+      </div>
+    </form>
+  );
+}
+
+function ExpenseForm({
+  action,
+  e,
+}: {
+  action: (fd: FormData) => void;
+  e?: typeof fixedExpenses.$inferSelect;
+}) {
+  return (
+    <form action={action} className="grid sm:grid-cols-2 gap-4 mt-4">
+      {e && <input type="hidden" name="id" value={e.id} />}
+      <div>
+        <label className="label">Nombre</label>
+        <input name="name" required defaultValue={e?.name} className="input" placeholder="Arriendo, Internet…" />
+      </div>
+      <div>
+        <label className="label">Monto mensual (COP)</label>
+        <input name="amount" type="number" min="0" step="any" required defaultValue={e?.amount} className="input" placeholder="1200000" />
+      </div>
+      <div>
+        <label className="label">Categoría</label>
+        <select name="category" className="select" defaultValue={e?.category ?? "General"}>
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label className="label">Día de pago (opcional)</label>
+        <input name="dueDay" type="number" min="1" max="31" defaultValue={e?.dueDay ?? ""} className="input" placeholder="5" />
+      </div>
+      {e && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="active" defaultChecked={e.active} /> Activo
+        </label>
+      )}
+      <div className="sm:col-span-2 flex gap-2">
+        <SubmitButton className="btn btn-primary">{e ? "Actualizar egreso" : "Guardar egreso"}</SubmitButton>
         <CancelButton />
       </div>
     </form>
@@ -99,25 +157,66 @@ function DebtForm({
 }
 
 export default async function DeudasPage() {
-  const rows = await db.select().from(debts);
+  const [rows, expenses] = await Promise.all([
+    db.select().from(debts),
+    db.select().from(fixedExpenses),
+  ]);
   const metrics = rows.map(debtMetrics);
   const totalBalance = sum(metrics.map((m) => m.balance));
   const totalPayment = sum(metrics.filter((m) => m.pendingInstallments > 0).map((m) => m.monthlyOutflow));
   const totalInterest = sum(metrics.map((m) => m.interestRemaining));
+  const totalExpenses = sum(expenses.filter((e) => e.active).map((e) => e.amount));
 
   return (
     <div>
       <PageHeader
-        title="Deudas"
-        subtitle="Préstamos y tarjetas. La cuota, el saldo y los intereses se calculan automáticamente (amortización francesa)."
+        title="Deudas y egresos fijos"
+        subtitle="Tus obligaciones mensuales: egresos fijos, tarjetas de crédito y préstamos."
       />
 
-      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <Stat label="Egresos fijos" value={totalExpenses} tone="amber" hint="Mensuales activos" />
         <Stat label="Deuda total pendiente" value={totalBalance} tone="red" />
-        <Stat label="Pago mensual de deudas" value={totalPayment} tone="amber" hint="Cuotas + seguro + abonos extra" />
-        <Stat label="Intereses por pagar" value={totalInterest} tone="red" hint="Estimado sobre cuotas pendientes" />
+        <Stat label="Pago mensual de deudas" value={totalPayment} tone="amber" hint="Cuotas + seguro + abonos" />
+        <Stat label="Intereses por pagar" value={totalInterest} tone="red" hint="Sobre cuotas pendientes" />
       </div>
 
+      {/* ─────────── EGRESOS FIJOS ─────────── */}
+      <h2 className="text-lg font-semibold mb-3">🧾 Egresos fijos</h2>
+      <details className="card mb-4">
+        <summary className="cursor-pointer font-semibold">➕ Agregar egreso fijo</summary>
+        <ExpenseForm action={createExpense} />
+      </details>
+
+      {expenses.length === 0 ? (
+        <EmptyState icon="🧾" title="Aún no tienes egresos fijos" hint="Agrega tus gastos recurrentes (arriendo, servicios, suscripciones…) arriba." />
+      ) : (
+        <div className="space-y-3 mb-8">
+          {expenses.map((r) => (
+            <div key={r.id} className="card">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="font-semibold">{r.name}</span>
+                  <Badge tone="primary">{r.category}</Badge>
+                  {r.dueDay && <Badge>Día {r.dueDay}</Badge>}
+                  {!r.active && <Badge tone="amber">Inactivo</Badge>}
+                </div>
+                <div className="text-lg font-bold text-[var(--red)]">{fmt(r.amount)}</div>
+              </div>
+              <div className="flex gap-2 mt-3 flex-wrap items-start">
+                <details className="inline-block">
+                  <summary className="btn btn-ghost btn-sm list-none">✏️ Editar</summary>
+                  <ExpenseForm action={updateExpense} e={r} />
+                </details>
+                <DeleteButton action={deleteExpense} id={r.id} label="🗑️ Eliminar" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ─────────── DEUDAS ─────────── */}
+      <h2 className="text-lg font-semibold mb-3">💳 Deudas (tarjetas y préstamos)</h2>
       <details className="card mb-6">
         <summary className="cursor-pointer font-semibold">➕ Agregar deuda</summary>
         <DebtForm action={createDebt} />
@@ -216,7 +315,7 @@ export default async function DeudasPage() {
                           )}
                         </p>
                         <div className="flex gap-2 mt-3">
-                          <button className="btn btn-primary btn-sm">Guardar pago</button>
+                          <SubmitButton>Guardar pago</SubmitButton>
                           <CancelButton className="btn btn-ghost btn-sm" />
                         </div>
                       </form>

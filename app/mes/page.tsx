@@ -18,13 +18,17 @@ import {
   monthLabel,
   normalizeMonth,
   currentMonth,
-  todayISO,
   dateLabel,
   sum,
 } from "@/lib/finance";
-import { PageHeader, Stat, Badge, Progress, EmptyState } from "@/components/ui";
+import { PageHeader, Stat, Badge, Progress } from "@/components/ui";
 import { CancelButton } from "@/components/CancelButton";
+import { SubmitButton } from "@/components/SubmitButton";
+import { DeleteButton } from "@/components/DeleteButton";
 import {
+  createIncome,
+  updateIncome,
+  deleteIncome,
   setIncomeReceipt,
   addOccasionalIncome,
   deleteIncomeReceipt,
@@ -54,7 +58,6 @@ export default async function MesPage({
       db.select().from(debtPayments).where(eq(debtPayments.month, month)),
     ]);
 
-  const activeInc = incDefs.filter((i) => i.active);
   const activeExp = expDefs.filter((e) => e.active);
   const debtMx = debtDefs.map(debtMetrics).filter((m) => m.pendingInstallments > 0 || m.balance > 0);
   const debtPaysByDebt = new Map<number, typeof debtPays>();
@@ -93,8 +96,6 @@ export default async function MesPage({
 
   const prev = addMonths(month, -1);
   const next = addMonths(month, 1);
-  const today = todayISO();
-  const noDefs = activeInc.length === 0 && activeExp.length === 0 && debtMx.length === 0;
 
   return (
     <div>
@@ -153,27 +154,47 @@ export default async function MesPage({
         <Progress value={paidPct} tone="green" />
       </div>
 
-      {noDefs ? (
-        <EmptyState
-          icon="📅"
-          title="Aún no tienes ingresos ni egresos configurados"
-          hint="Agrega tus fuentes en Ingresos y tus gastos en Egresos fijos; luego vuelve aquí para registrar el mes."
-        />
-      ) : (
+      {(
         <div className="grid lg:grid-cols-2 gap-4">
           {/* ─────────── INGRESOS ─────────── */}
           <div className="card">
-            <div className="font-semibold mb-4">💰 Ingresos del mes</div>
+            <div className="font-semibold mb-3">💰 Ingresos del mes</div>
 
-            {activeInc.length === 0 && occasional.length === 0 && (
-              <p className="text-sm text-[var(--muted)]">
-                No hay ingresos activos. Agrégalos en{" "}
-                <Link href="/ingresos" className="underline">Ingresos</Link>.
-              </p>
+            <details className="mb-3">
+              <summary className="btn btn-ghost btn-sm list-none inline-block">＋ Agregar ingreso</summary>
+              <form action={createIncome} className="grid grid-cols-2 gap-2 mt-2">
+                <div className="col-span-2">
+                  <label className="label">Nombre</label>
+                  <input name="name" required className="input" placeholder="Salario, arriendo, freelance…" />
+                </div>
+                <div>
+                  <label className="label">Monto / sueldo base (COP)</label>
+                  <input name="amount" type="number" min="0" step="any" required className="input" placeholder="3500000" />
+                </div>
+                <div>
+                  <label className="label">Tipo</label>
+                  <select name="kind" className="select" defaultValue="recurrente">
+                    <option value="recurrente">Recurrente</option>
+                    <option value="salario_base">Salario base (descuenta prestaciones)</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Prestaciones (%)</label>
+                  <input name="prestacionesRate" type="number" min="0" max="100" step="any" className="input" placeholder="8 — solo si es salario base" />
+                </div>
+                <div className="col-span-2 flex gap-2">
+                  <SubmitButton>Guardar ingreso</SubmitButton>
+                  <CancelButton className="btn btn-ghost btn-sm" />
+                </div>
+              </form>
+            </details>
+
+            {incDefs.length === 0 && occasional.length === 0 && (
+              <p className="text-sm text-[var(--muted)]">Agrega tu primera fuente de ingreso arriba.</p>
             )}
 
             <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
-              {activeInc.map((inc) => {
+              {incDefs.map((inc) => {
                 const receipt = receiptByIncome.get(inc.id);
                 const net = netIncome(inc);
                 const received = receipt ? receipt.amount : null;
@@ -183,6 +204,7 @@ export default async function MesPage({
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{inc.name}</span>
                         {inc.kind === "salario_base" && <Badge tone="primary">Salario base</Badge>}
+                        {!inc.active && <Badge tone="amber">Inactivo</Badge>}
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-[var(--green)]">
@@ -200,29 +222,66 @@ export default async function MesPage({
                       </div>
                     )}
 
-                    <details className="mt-2">
-                      <summary className="btn btn-ghost btn-sm list-none inline-block">
-                        {received != null ? "✏️ Ajustar recibido" : "＋ Registrar recibido"}
-                      </summary>
-                      <form action={setIncomeReceipt} className="flex items-end gap-2 mt-2 flex-wrap">
-                        <input type="hidden" name="month" value={month} />
-                        <input type="hidden" name="incomeId" value={inc.id} />
-                        <div>
-                          <label className="label">Recibido este mes (COP)</label>
-                          <input
-                            name="amount"
-                            type="number"
-                            min="0"
-                            step="any"
-                            defaultValue={received != null ? received : Math.round(net)}
-                            className="input"
-                            style={{ width: 180 }}
-                          />
-                        </div>
-                        <button className="btn btn-primary btn-sm">Guardar</button>
-                        <CancelButton className="btn btn-ghost btn-sm" />
-                      </form>
-                    </details>
+                    <div className="flex gap-2 mt-2 flex-wrap items-start">
+                      {inc.active && (
+                        <details>
+                          <summary className="btn btn-ghost btn-sm list-none inline-block">
+                            {received != null ? "✏️ Ajustar recibido" : "＋ Registrar recibido"}
+                          </summary>
+                          <form action={setIncomeReceipt} className="flex items-end gap-2 mt-2 flex-wrap">
+                            <input type="hidden" name="month" value={month} />
+                            <input type="hidden" name="incomeId" value={inc.id} />
+                            <div>
+                              <label className="label">Recibido este mes (COP)</label>
+                              <input
+                                name="amount"
+                                type="number"
+                                min="0"
+                                step="any"
+                                defaultValue={received != null ? received : Math.round(net)}
+                                className="input"
+                                style={{ width: 180 }}
+                              />
+                            </div>
+                            <SubmitButton>Guardar</SubmitButton>
+                            <CancelButton className="btn btn-ghost btn-sm" />
+                          </form>
+                        </details>
+                      )}
+                      <details>
+                        <summary className="btn btn-ghost btn-sm list-none inline-block">⚙️ Editar</summary>
+                        <form action={updateIncome} className="grid grid-cols-2 gap-2 mt-2" style={{ minWidth: 260 }}>
+                          <input type="hidden" name="id" value={inc.id} />
+                          <div className="col-span-2">
+                            <label className="label">Nombre</label>
+                            <input name="name" defaultValue={inc.name} required className="input" />
+                          </div>
+                          <div>
+                            <label className="label">Monto / sueldo base (COP)</label>
+                            <input name="amount" type="number" min="0" step="any" defaultValue={inc.amount} required className="input" />
+                          </div>
+                          <div>
+                            <label className="label">Tipo</label>
+                            <select name="kind" className="select" defaultValue={inc.kind}>
+                              <option value="recurrente">Recurrente</option>
+                              <option value="salario_base">Salario base (descuenta prestaciones)</option>
+                            </select>
+                          </div>
+                          <div className="col-span-2">
+                            <label className="label">Prestaciones (%)</label>
+                            <input name="prestacionesRate" type="number" min="0" max="100" step="any" defaultValue={inc.prestacionesRate || ""} className="input" placeholder="8" />
+                          </div>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" name="active" defaultChecked={inc.active} /> Activo
+                          </label>
+                          <div className="col-span-2 flex gap-2">
+                            <SubmitButton>Actualizar</SubmitButton>
+                            <CancelButton className="btn btn-ghost btn-sm" />
+                          </div>
+                        </form>
+                      </details>
+                      <DeleteButton action={deleteIncome} id={inc.id} label="🗑️" />
+                    </div>
                   </div>
                 );
               })}
@@ -245,7 +304,7 @@ export default async function MesPage({
               ))}
             </div>
 
-            <details className="mt-4">
+            <details className="mt-3">
               <summary className="btn btn-ghost btn-sm list-none inline-block">＋ Ingreso ocasional</summary>
               <form action={addOccasionalIncome} className="grid grid-cols-2 gap-2 mt-2">
                 <input type="hidden" name="month" value={month} />
@@ -258,7 +317,7 @@ export default async function MesPage({
                   <input name="amount" type="number" min="0" step="any" required className="input" placeholder="500000" />
                 </div>
                 <div className="col-span-2 flex gap-2">
-                  <button className="btn btn-primary btn-sm">Agregar</button>
+                  <SubmitButton>Agregar</SubmitButton>
                   <CancelButton className="btn btn-ghost btn-sm" />
                 </div>
               </form>
@@ -272,7 +331,7 @@ export default async function MesPage({
             {activeExp.length === 0 && (
               <p className="text-sm text-[var(--muted)]">
                 No hay egresos activos. Agrégalos en{" "}
-                <Link href="/egresos" className="underline">Egresos fijos</Link>.
+                <Link href="/deudas" className="underline">Deudas y egresos</Link>.
               </p>
             )}
 
@@ -335,13 +394,10 @@ export default async function MesPage({
                               style={{ width: 160 }}
                             />
                           </div>
-                          <div>
-                            <label className="label">Fecha (opcional)</label>
-                            <input name="paidAt" type="date" defaultValue={today} className="input" />
-                          </div>
-                          <button className="btn btn-primary btn-sm">Registrar</button>
+                          <SubmitButton>Registrar</SubmitButton>
                           <CancelButton className="btn btn-ghost btn-sm" />
                         </form>
+                        <p className="text-xs text-[var(--muted)] mt-1">Se registra con la fecha de hoy.</p>
                       </details>
                     )}
                   </div>
@@ -352,7 +408,7 @@ export default async function MesPage({
         </div>
       )}
 
-      {!noDefs && debtMx.length > 0 && (
+      {debtMx.length > 0 && (
         <div className="card mt-4">
           <div className="font-semibold mb-4">💳 Deudas del mes</div>
           <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
@@ -414,21 +470,18 @@ export default async function MesPage({
                             style={{ width: 160 }}
                           />
                         </div>
-                        <div>
-                          <label className="label">Fecha (opcional)</label>
-                          <input name="paidAt" type="date" defaultValue={today} className="input" />
-                        </div>
                         <label className="flex items-center gap-2 text-sm">
                           <input type="checkbox" name="counts" defaultChecked /> Cuenta como cuota
                         </label>
-                        <button className="btn btn-primary btn-sm">Registrar</button>
+                        <SubmitButton>Registrar</SubmitButton>
                         <CancelButton className="btn btn-ghost btn-sm" />
                       </form>
-                      {m.insurance > 0 && (
-                        <p className="text-xs text-[var(--muted)] mt-1">
-                          El seguro del mes ({fmt(m.insurance)}) se suma a tu salida de caja; no lo incluyas en el pago a la cuota.
-                        </p>
-                      )}
+                      <p className="text-xs text-[var(--muted)] mt-1">
+                        Se registra con la fecha de hoy.
+                        {m.insurance > 0 && (
+                          <> El seguro del mes ({fmt(m.insurance)}) se suma a tu salida de caja; no lo incluyas en el pago a la cuota.</>
+                        )}
+                      </p>
                     </details>
                   )}
                 </div>
