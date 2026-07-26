@@ -15,6 +15,7 @@ export const metadata: Metadata = {
 
 const nav = [
   { href: "/", label: "Panel", icon: "📊" },
+  { href: "/mes", label: "Mes", icon: "📅" },
   { href: "/deudas", label: "Deudas", icon: "💳" },
   { href: "/plan", label: "Plan de pago", icon: "🎯" },
   { href: "/ingresos", label: "Ingresos", icon: "💰" },

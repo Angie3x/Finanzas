@@ -160,7 +160,7 @@ export function computeKpis(
   expenses: FixedExpense[],
   metrics: DebtMetrics[]
 ): Kpis {
-  const totalIncome = sum(incomes.filter((x) => x.active).map((x) => x.amount));
+  const totalIncome = sum(incomes.filter((x) => x.active).map((x) => netIncome(x)));
   const totalFixedExpenses = sum(expenses.filter((x) => x.active).map((x) => x.amount));
   const active = metrics.filter((m) => m.pendingInstallments > 0);
   const totalDebtPayment = sum(active.map((m) => m.monthlyOutflow));
@@ -362,6 +362,56 @@ export function nextMonthProjection(
 
   items.sort((a, b) => (a.dueDay ?? 99) - (b.dueDay ?? 99));
   return { items, total: sum(items.map((x) => x.amount)) };
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Presupuesto mensual: neto de ingresos y utilidades de meses
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Neto de un ingreso. Para "salario_base" descuenta el % de prestaciones que
+ * retiene la empresa; los demás ingresos van completos.
+ */
+export function netIncome(
+  inc: Pick<Income, "amount" | "kind" | "prestacionesRate">
+): number {
+  if (inc.kind === "salario_base") {
+    const rate = Math.max(0, Math.min(100, inc.prestacionesRate ?? 0));
+    return inc.amount * (1 - rate / 100);
+  }
+  return inc.amount;
+}
+
+/** Descuento de prestaciones (en COP) de un ingreso salario_base; 0 en otros. */
+export function prestacionesAmount(
+  inc: Pick<Income, "amount" | "kind" | "prestacionesRate">
+): number {
+  return inc.kind === "salario_base" ? inc.amount - netIncome(inc) : 0;
+}
+
+/** Mes actual en formato "YYYY-MM". */
+export function currentMonth(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Suma (o resta) meses a un "YYYY-MM" y devuelve el nuevo "YYYY-MM". */
+export function addMonths(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  return currentMonth(new Date(y, m - 1 + delta, 1));
+}
+
+/** Etiqueta legible de un mes: "julio de 2026". */
+export function monthLabel(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("es-CO", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** Valida un "YYYY-MM"; si no es válido, devuelve el mes actual. */
+export function normalizeMonth(month: string | undefined | null): string {
+  return month && /^\d{4}-\d{2}$/.test(month) ? month : currentMonth();
 }
 
 /* ── helpers ── */

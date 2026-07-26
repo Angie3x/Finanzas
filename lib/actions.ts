@@ -1,10 +1,21 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "./db";
-import { incomes, fixedExpenses, debts } from "./db/schema";
-import { monthlyRate, computeInstallment, remainingBalance } from "./finance";
+import {
+  incomes,
+  fixedExpenses,
+  debts,
+  incomeReceipts,
+  expensePayments,
+} from "./db/schema";
+import {
+  monthlyRate,
+  computeInstallment,
+  remainingBalance,
+  normalizeMonth,
+} from "./finance";
 
 /* ── helpers ── */
 function num(v: FormDataEntryValue | null, fallback = 0): number {
@@ -23,33 +34,92 @@ function intOrNull(v: FormDataEntryValue | null): number | null {
 }
 
 /* ────────────────  INGRESOS  ──────────────── */
+function incomeKind(v: FormDataEntryValue | null): "salario_base" | "recurrente" {
+  return str(v) === "salario_base" ? "salario_base" : "recurrente";
+}
+function rate(v: FormDataEntryValue | null): number {
+  return Math.max(0, Math.min(100, num(v, 0)));
+}
+
 export async function createIncome(formData: FormData) {
+  const kind = incomeKind(formData.get("kind"));
   await db.insert(incomes).values({
     name: str(formData.get("name")),
     amount: num(formData.get("amount")),
+    kind,
+    prestacionesRate: kind === "salario_base" ? rate(formData.get("prestacionesRate")) : 0,
     active: true,
   });
   revalidatePath("/ingresos");
+  revalidatePath("/mes");
   revalidatePath("/");
 }
 
 export async function updateIncome(formData: FormData) {
   const id = num(formData.get("id"));
+  const kind = incomeKind(formData.get("kind"));
   await db
     .update(incomes)
     .set({
       name: str(formData.get("name")),
       amount: num(formData.get("amount")),
+      kind,
+      prestacionesRate: kind === "salario_base" ? rate(formData.get("prestacionesRate")) : 0,
       active: str(formData.get("active")) === "on",
     })
     .where(eq(incomes.id, id));
   revalidatePath("/ingresos");
+  revalidatePath("/mes");
   revalidatePath("/");
 }
 
 export async function deleteIncome(formData: FormData) {
-  await db.delete(incomes).where(eq(incomes.id, num(formData.get("id"))));
+  const id = num(formData.get("id"));
+  await db.delete(incomeReceipts).where(eq(incomeReceipts.incomeId, id));
+  await db.delete(incomes).where(eq(incomes.id, id));
   revalidatePath("/ingresos");
+  revalidatePath("/mes");
+  revalidatePath("/");
+}
+
+/* ────────────────  LEDGER MENSUAL: INGRESOS RECIBIDOS  ──────────────── */
+
+/** Registra/actualiza cuánto se recibió de un ingreso en un mes (vacío = borrar). */
+export async function setIncomeReceipt(formData: FormData) {
+  const month = normalizeMonth(str(formData.get("month")));
+  const incomeId = num(formData.get("incomeId"));
+  const raw = String(formData.get("amount") ?? "").trim();
+  await db
+    .delete(incomeReceipts)
+    .where(and(eq(incomeReceipts.month, month), eq(incomeReceipts.incomeId, incomeId)));
+  if (raw !== "") {
+    await db.insert(incomeReceipts).values({
+      month,
+      incomeId,
+      amount: num(formData.get("amount")),
+    });
+  }
+  revalidatePath("/mes");
+  revalidatePath("/");
+}
+
+/** Agrega un ingreso ocasional que solo existe en ese mes. */
+export async function addOccasionalIncome(formData: FormData) {
+  const month = normalizeMonth(str(formData.get("month")));
+  await db.insert(incomeReceipts).values({
+    month,
+    incomeId: null,
+    name: str(formData.get("name")) || "Ingreso ocasional",
+    amount: num(formData.get("amount")),
+  });
+  revalidatePath("/mes");
+  revalidatePath("/");
+}
+
+/** Elimina un movimiento de ingreso del mes (recibo u ocasional). */
+export async function deleteIncomeReceipt(formData: FormData) {
+  await db.delete(incomeReceipts).where(eq(incomeReceipts.id, num(formData.get("id"))));
+  revalidatePath("/mes");
   revalidatePath("/");
 }
 
@@ -63,6 +133,7 @@ export async function createExpense(formData: FormData) {
     active: true,
   });
   revalidatePath("/egresos");
+  revalidatePath("/mes");
   revalidatePath("/");
 }
 
@@ -79,12 +150,38 @@ export async function updateExpense(formData: FormData) {
     })
     .where(eq(fixedExpenses.id, id));
   revalidatePath("/egresos");
+  revalidatePath("/mes");
   revalidatePath("/");
 }
 
 export async function deleteExpense(formData: FormData) {
-  await db.delete(fixedExpenses).where(eq(fixedExpenses.id, num(formData.get("id"))));
+  const id = num(formData.get("id"));
+  await db.delete(expensePayments).where(eq(expensePayments.expenseId, id));
+  await db.delete(fixedExpenses).where(eq(fixedExpenses.id, id));
   revalidatePath("/egresos");
+  revalidatePath("/mes");
+  revalidatePath("/");
+}
+
+/* ────────────────  LEDGER MENSUAL: PAGOS DE EGRESOS  ──────────────── */
+
+/** Registra un pago de un egreso en un mes (marca el egreso como pagado). */
+export async function registerExpensePayment(formData: FormData) {
+  const month = normalizeMonth(str(formData.get("month")));
+  await db.insert(expensePayments).values({
+    month,
+    expenseId: num(formData.get("expenseId")),
+    amount: num(formData.get("amount")),
+    paidAt: str(formData.get("paidAt")) || null,
+  });
+  revalidatePath("/mes");
+  revalidatePath("/");
+}
+
+/** Elimina un pago registrado (desmarca el egreso de ese mes). */
+export async function deleteExpensePayment(formData: FormData) {
+  await db.delete(expensePayments).where(eq(expensePayments.id, num(formData.get("id"))));
+  revalidatePath("/mes");
   revalidatePath("/");
 }
 
