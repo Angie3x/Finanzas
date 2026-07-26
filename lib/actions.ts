@@ -17,6 +17,7 @@ import {
   remainingBalance,
   monthlyInsurance,
   normalizeMonth,
+  todayISO,
 } from "./finance";
 
 /* ── helpers ── */
@@ -174,7 +175,7 @@ export async function registerExpensePayment(formData: FormData) {
     month,
     expenseId: num(formData.get("expenseId")),
     amount: num(formData.get("amount")),
-    paidAt: str(formData.get("paidAt")) || null,
+    paidAt: str(formData.get("paidAt")) || todayISO(),
   });
   revalidatePath("/mes");
   revalidatePath("/");
@@ -263,7 +264,7 @@ export async function registerPayment(formData: FormData) {
   const amount = Math.max(0, num(formData.get("amount")));
   const counts = str(formData.get("counts")) === "on";
   const month = normalizeMonth(str(formData.get("month")));
-  const paidAt = str(formData.get("paidAt")) || null;
+  const paidAt = str(formData.get("paidAt")) || todayISO();
 
   const rows = await db.select().from(debts).where(eq(debts.id, id));
   const d = rows[0];

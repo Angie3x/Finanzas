@@ -18,6 +18,8 @@ import {
   monthLabel,
   normalizeMonth,
   currentMonth,
+  todayISO,
+  dateLabel,
   sum,
 } from "@/lib/finance";
 import { PageHeader, Stat, Badge, Progress, EmptyState } from "@/components/ui";
@@ -91,6 +93,7 @@ export default async function MesPage({
 
   const prev = addMonths(month, -1);
   const next = addMonths(month, 1);
+  const today = todayISO();
   const noDefs = activeInc.length === 0 && activeExp.length === 0 && debtMx.length === 0;
 
   return (
@@ -122,10 +125,16 @@ export default async function MesPage({
       )}
 
       {/* Resumen del mes */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
         <Stat label="Recibido este mes" value={totalReceived} tone="green" />
         <Stat label="Compromisos del mes" value={totalCommitments} tone="amber" hint="Egresos + deudas" />
         <Stat label="Pagado hasta ahora" value={totalPaid} />
+        <Stat
+          label="Falta por pagar"
+          value={Math.max(0, pendiente)}
+          tone={pendiente > 0 ? "red" : "green"}
+          hint="Compromisos − pagado"
+        />
         <Stat
           label="Disponible ahora"
           value={disponible}
@@ -163,7 +172,7 @@ export default async function MesPage({
               </p>
             )}
 
-            <div className="space-y-3">
+            <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
               {activeInc.map((inc) => {
                 const receipt = receiptByIncome.get(inc.id);
                 const net = netIncome(inc);
@@ -267,7 +276,7 @@ export default async function MesPage({
               </p>
             )}
 
-            <div className="space-y-3">
+            <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
               {activeExp.map((e) => {
                 const pays = paymentsByExpense.get(e.id) ?? [];
                 const paidTotal = sum(pays.map((p) => p.amount));
@@ -297,7 +306,10 @@ export default async function MesPage({
 
                     {isPaid ? (
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-[var(--green)]">Pagado {fmt(paidTotal)}</span>
+                        <span className="text-xs text-[var(--green)]">
+                          Pagado {fmt(paidTotal)}
+                          {pays[0]?.paidAt ? ` · ${dateLabel(pays[0].paidAt)}` : ""}
+                        </span>
                         {pays.map((p) => (
                           <form key={p.id} action={deleteExpensePayment}>
                             <input type="hidden" name="id" value={p.id} />
@@ -325,7 +337,7 @@ export default async function MesPage({
                           </div>
                           <div>
                             <label className="label">Fecha (opcional)</label>
-                            <input name="paidAt" type="date" className="input" />
+                            <input name="paidAt" type="date" defaultValue={today} className="input" />
                           </div>
                           <button className="btn btn-primary btn-sm">Registrar</button>
                           <CancelButton className="btn btn-ghost btn-sm" />
@@ -343,7 +355,7 @@ export default async function MesPage({
       {!noDefs && debtMx.length > 0 && (
         <div className="card mt-4">
           <div className="font-semibold mb-4">💳 Deudas del mes</div>
-          <div className="space-y-3">
+          <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
             {debtMx.map((m) => {
               const pays = debtPaysByDebt.get(m.id) ?? [];
               const isPaid = pays.length > 0;
@@ -373,7 +385,10 @@ export default async function MesPage({
 
                   {isPaid ? (
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-[var(--green)]">Pagado {fmt(paidCash)}</span>
+                      <span className="text-xs text-[var(--green)]">
+                        Pagado {fmt(paidCash)}
+                        {pays[0]?.paidAt ? ` · ${dateLabel(pays[0].paidAt)}` : ""}
+                      </span>
                       {pays.map((p) => (
                         <form key={p.id} action={deleteDebtPayment}>
                           <input type="hidden" name="id" value={p.id} />
@@ -401,7 +416,7 @@ export default async function MesPage({
                         </div>
                         <div>
                           <label className="label">Fecha (opcional)</label>
-                          <input name="paidAt" type="date" className="input" />
+                          <input name="paidAt" type="date" defaultValue={today} className="input" />
                         </div>
                         <label className="flex items-center gap-2 text-sm">
                           <input type="checkbox" name="counts" defaultChecked /> Cuenta como cuota

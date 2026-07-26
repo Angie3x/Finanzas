@@ -394,6 +394,22 @@ export function currentMonth(d = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Fecha de hoy en formato "YYYY-MM-DD" (hora local). */
+export function todayISO(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
+
+/** Etiqueta corta de fecha ISO "YYYY-MM-DD" → "25 jul". */
+export function dateLabel(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const mon = new Date(y, m - 1, d).toLocaleDateString("es-CO", { month: "short" });
+  return `${d} ${mon.replace(".", "")}`;
+}
+
 /** Suma (o resta) meses a un "YYYY-MM" y devuelve el nuevo "YYYY-MM". */
 export function addMonths(month: string, delta: number): string {
   const [y, m] = month.split("-").map(Number);
