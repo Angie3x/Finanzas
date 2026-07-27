@@ -73,7 +73,7 @@ export default async function MesPage({
   // poder deshacerla). Al pagar la última cuota, deja de aparecer el próximo mes.
   const debtMx = debtDefs
     .map(debtMetrics)
-    .filter((m) => m.pendingInstallments > 0 || debtPaysByDebt.has(m.id));
+    .filter((m) => !m.settled || debtPaysByDebt.has(m.id));
 
   const receiptByIncome = new Map<number, (typeof receipts)[number]>();
   const occasional: typeof receipts = [];

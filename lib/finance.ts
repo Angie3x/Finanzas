@@ -77,6 +77,7 @@ export type DebtMetrics = {
   paidInstallments: number;
   totalInstallments: number;
   pendingInstallments: number;
+  settled: boolean; // true = ya no requiere pago (saldo ~0 o sin cuotas pendientes)
   nextInterest: number; // interés del próximo pago
   nextPrincipal: number; // abono a capital del próximo pago
   nextPayment: number; // valor estimado del próximo pago (solo la cuota)
@@ -100,6 +101,10 @@ export function debtMetrics(d: Debt): DebtMetrics {
       : remainingBalance(d.principal, i, installment, paid);
 
   const pending = Math.max(0, n - paid);
+  // Una deuda está saldada si ya no le quedan cuotas o si su saldo es ~0
+  // (p. ej. se pagó todo el saldo de una vez, aunque el contador de cuotas no
+  // haya llegado al total). En ese caso deja de ser un compromiso mensual.
+  const settled = pending === 0 || balance <= 0.5;
   const extra = Math.max(0, d.extraPayment ?? 0);
   const nextInterest = balance * i;
   const nextPayment = pending > 0 ? Math.min(installment, balance + nextInterest) : 0;
@@ -130,6 +135,7 @@ export function debtMetrics(d: Debt): DebtMetrics {
     paidInstallments: paid,
     totalInstallments: n,
     pendingInstallments: pending,
+    settled,
     nextInterest,
     nextPrincipal,
     nextPayment,
@@ -162,7 +168,7 @@ export function computeKpis(
 ): Kpis {
   const totalIncome = sum(incomes.filter((x) => x.active).map((x) => netIncome(x)));
   const totalFixedExpenses = sum(expenses.filter((x) => x.active).map((x) => x.amount));
-  const active = metrics.filter((m) => m.pendingInstallments > 0);
+  const active = metrics.filter((m) => !m.settled);
   const totalDebtPayment = sum(active.map((m) => m.monthlyOutflow));
   const totalDebtBalance = sum(metrics.map((m) => m.balance));
   const totalInterestRemaining = sum(metrics.map((m) => m.interestRemaining));
@@ -338,7 +344,7 @@ export function nextMonthProjection(
   const items: NextMonthItem[] = [];
 
   for (const m of metrics) {
-    if (m.pendingInstallments > 0) {
+    if (!m.settled) {
       const extraNote = m.extra > 0 ? ` · incluye abono extra` : "";
       const insNote = m.insurance > 0 ? ` · incluye seguro` : "";
       items.push({

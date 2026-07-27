@@ -164,7 +164,7 @@ export default async function DeudasPage() {
   ]);
   const metrics = rows.map(debtMetrics);
   const totalBalance = sum(metrics.map((m) => m.balance));
-  const totalPayment = sum(metrics.filter((m) => m.pendingInstallments > 0).map((m) => m.monthlyOutflow));
+  const totalPayment = sum(metrics.filter((m) => !m.settled).map((m) => m.monthlyOutflow));
   const totalInterest = sum(metrics.map((m) => m.interestRemaining));
   const totalExpenses = sum(expenses.filter((e) => e.active).map((e) => e.amount));
 
@@ -245,7 +245,7 @@ export default async function DeudasPage() {
                       <Badge tone={m.type === "tarjeta" ? "primary" : "default"}>
                         {m.type === "tarjeta" ? "💳 Tarjeta" : "🏦 Préstamo"}
                       </Badge>
-                      {m.pendingInstallments === 0 && <Badge tone="green">✓ Pagada</Badge>}
+                      {m.settled && <Badge tone="green">✓ Pagada</Badge>}
                     </div>
                     <div className="text-sm text-[var(--muted)] mt-1">
                       Tasa {pct(m.annualEffective * 100)} E.A. · {pct(m.monthlyRate * 100, 2)} mensual
@@ -297,7 +297,7 @@ export default async function DeudasPage() {
                 </div>
 
                 <div className="flex gap-2 mt-4 flex-wrap items-start">
-                  {m.pendingInstallments > 0 && (
+                  {!m.settled && (
                     <details className="inline-block">
                       <summary className="btn btn-ghost btn-sm list-none">💵 Registrar pago</summary>
                       <form action={registerPayment} className="card mt-2" style={{ minWidth: 300 }}>
