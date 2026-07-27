@@ -22,6 +22,7 @@ import {
   sum,
 } from "@/lib/finance";
 import { PageHeader, Stat, Badge, Progress } from "@/components/ui";
+import { FilterList } from "@/components/FilterList";
 import { CancelButton } from "@/components/CancelButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { DeleteButton } from "@/components/DeleteButton";
@@ -59,13 +60,20 @@ export default async function MesPage({
     ]);
 
   const activeExp = expDefs.filter((e) => e.active);
-  const debtMx = debtDefs.map(debtMetrics).filter((m) => m.pendingInstallments > 0 || m.balance > 0);
+
   const debtPaysByDebt = new Map<number, typeof debtPays>();
   for (const p of debtPays) {
     const list = debtPaysByDebt.get(p.debtId) ?? [];
     list.push(p);
     debtPaysByDebt.set(p.debtId, list);
   }
+
+  // Mostramos una deuda en el mes si aún le quedan cuotas por pagar, o si ya
+  // tiene un pago registrado este mes (para verla como "✓ Pagada este mes" y
+  // poder deshacerla). Al pagar la última cuota, deja de aparecer el próximo mes.
+  const debtMx = debtDefs
+    .map(debtMetrics)
+    .filter((m) => m.pendingInstallments > 0 || debtPaysByDebt.has(m.id));
 
   const receiptByIncome = new Map<number, (typeof receipts)[number]>();
   const occasional: typeof receipts = [];
@@ -193,13 +201,15 @@ export default async function MesPage({
               <p className="text-sm text-[var(--muted)]">Agrega tu primera fuente de ingreso arriba.</p>
             )}
 
-            <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
-              {incDefs.map((inc) => {
+            <FilterList
+              placeholder="Buscar ingreso…"
+              items={[
+                ...incDefs.map((inc) => {
                 const receipt = receiptByIncome.get(inc.id);
                 const net = netIncome(inc);
                 const received = receipt ? receipt.amount : null;
-                return (
-                  <div key={inc.id} className="border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
+                return { key: `inc-${inc.id}`, text: inc.name, node: (
+                  <div className="border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{inc.name}</span>
@@ -283,12 +293,12 @@ export default async function MesPage({
                       <DeleteButton action={deleteIncome} id={inc.id} label="🗑️" />
                     </div>
                   </div>
-                );
-              })}
+                ) };
+              }),
 
-              {/* Ingresos ocasionales del mes */}
-              {occasional.map((o) => (
-                <div key={o.id} className="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
+              /* Ingresos ocasionales del mes */
+              ...occasional.map((o) => ({ key: `occ-${o.id}`, text: o.name || "Ingreso ocasional", node: (
+                <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{o.name || "Ingreso ocasional"}</span>
                     <Badge tone="amber">Ocasional</Badge>
@@ -301,8 +311,9 @@ export default async function MesPage({
                     </form>
                   </div>
                 </div>
-              ))}
-            </div>
+              ) })),
+              ]}
+            />
 
             <details className="mt-3">
               <summary className="btn btn-ghost btn-sm list-none inline-block">＋ Ingreso ocasional</summary>
@@ -335,13 +346,14 @@ export default async function MesPage({
               </p>
             )}
 
-            <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
-              {activeExp.map((e) => {
+            <FilterList
+              placeholder="Buscar egreso…"
+              items={activeExp.map((e) => {
                 const pays = paymentsByExpense.get(e.id) ?? [];
                 const paidTotal = sum(pays.map((p) => p.amount));
                 const isPaid = pays.length > 0;
-                return (
-                  <div key={e.id} className={`border-b border-[var(--border)] pb-3 last:border-0 last:pb-0 ${isPaid ? "opacity-90" : ""}`}>
+                return { key: e.id, text: `${e.name} ${e.category}`, node: (
+                  <div className={`border-b border-[var(--border)] pb-3 last:border-0 last:pb-0 ${isPaid ? "opacity-90" : ""}`}>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div>
                         <div className="font-medium flex items-center gap-2 flex-wrap">
@@ -401,9 +413,9 @@ export default async function MesPage({
                       </details>
                     )}
                   </div>
-                );
+                ) };
               })}
-            </div>
+            />
           </div>
         </div>
       )}
@@ -411,13 +423,14 @@ export default async function MesPage({
       {debtMx.length > 0 && (
         <div className="card mt-4">
           <div className="font-semibold mb-4">💳 Deudas del mes</div>
-          <div className="space-y-3 pr-1" style={{ maxHeight: 400, overflowY: "auto" }}>
-            {debtMx.map((m) => {
+          <FilterList
+            placeholder="Buscar deuda…"
+            items={debtMx.map((m) => {
               const pays = debtPaysByDebt.get(m.id) ?? [];
               const isPaid = pays.length > 0;
               const paidCash = sum(pays.map((p) => p.amount + p.insurance));
-              return (
-                <div key={m.id} className="border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
+              return { key: m.id, text: m.name, node: (
+                <div className="border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div>
                       <div className="font-medium flex items-center gap-2 flex-wrap">
@@ -485,9 +498,9 @@ export default async function MesPage({
                     </details>
                   )}
                 </div>
-              );
+              ) };
             })}
-          </div>
+          />
         </div>
       )}
     </div>

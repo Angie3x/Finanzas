@@ -12,6 +12,7 @@ import {
 import { fmt, pct } from "@/lib/format";
 import { debtMetrics, sum } from "@/lib/finance";
 import { PageHeader, Stat, EmptyState, Badge, Progress } from "@/components/ui";
+import { FilterList } from "@/components/FilterList";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CancelButton } from "@/components/CancelButton";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -191,9 +192,12 @@ export default async function DeudasPage() {
       {expenses.length === 0 ? (
         <EmptyState icon="🧾" title="Aún no tienes egresos fijos" hint="Agrega tus gastos recurrentes (arriendo, servicios, suscripciones…) arriba." />
       ) : (
-        <div className="space-y-3 mb-8">
-          {expenses.map((r) => (
-            <div key={r.id} className="card">
+        <div className="mb-8">
+          <FilterList
+            placeholder="Buscar egreso por nombre o categoría…"
+            maxHeight={460}
+            items={expenses.map((r) => ({ key: r.id, text: `${r.name} ${r.category}`, node: (
+            <div className="card">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="font-semibold">{r.name}</span>
@@ -211,7 +215,8 @@ export default async function DeudasPage() {
                 <DeleteButton action={deleteExpense} id={r.id} label="🗑️ Eliminar" />
               </div>
             </div>
-          ))}
+            ) }))}
+          />
         </div>
       )}
 
@@ -225,12 +230,14 @@ export default async function DeudasPage() {
       {rows.length === 0 ? (
         <EmptyState icon="💳" title="Aún no tienes deudas registradas" hint="Agrega tu primer préstamo o tarjeta arriba." />
       ) : (
-        <div className="space-y-4">
-          {metrics.map((m) => {
+        <FilterList
+          placeholder="Buscar deuda por nombre…"
+          maxHeight={560}
+          items={metrics.map((m) => {
             const d = rows.find((r) => r.id === m.id)!;
             const progress = m.totalInstallments > 0 ? (m.paidInstallments / m.totalInstallments) * 100 : 0;
-            return (
-              <div key={m.id} className="card">
+            return { key: m.id, text: `${m.name} ${m.type === "tarjeta" ? "tarjeta" : "prestamo"}`, node: (
+              <div className="card">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -328,9 +335,9 @@ export default async function DeudasPage() {
                   <DeleteButton action={deleteDebt} id={m.id} label="🗑️ Eliminar" />
                 </div>
               </div>
-            );
+            ) };
           })}
-        </div>
+        />
       )}
     </div>
   );
