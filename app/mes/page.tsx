@@ -94,13 +94,40 @@ export default async function MesPage({
   }
 
   const totalReceived = sum(receipts.map((r) => r.amount));
-  const expensesPaid = sum(payments.map((p) => p.amount));
-  const debtPaidCash = sum(debtPays.map((p) => p.amount + p.insurance));
-  const totalPaid = expensesPaid + debtPaidCash; // pagos a compromisos (egresos + deudas)
   const occasionalSpent = sum(occExpenses.map((o) => o.amount)); // gastos ocasionales del mes
 
-  const expensesCommitment = sum(activeExp.map((e) => e.amount));
-  const debtCommitment = sum(debtMx.map((m) => m.monthlyOutflow));
+  // Compromiso y pago del mes, ítem por ítem. Para lo ya pagado, el compromiso
+  // del mes ES lo que se pagó (así una deuda que se saldó este mes no descuadra
+  // el total al desaparecer su cuota futura); para lo pendiente, el monto
+  // esperado. Con esto "falta por pagar" refleja exactamente lo que queda sin
+  // pagar y el progreso nunca supera el 100%.
+  let expensesCommitment = 0;
+  let expensesPaid = 0;
+  for (const e of activeExp) {
+    const pays = paymentsByExpense.get(e.id) ?? [];
+    if (pays.length > 0) {
+      const paid = sum(pays.map((p) => p.amount));
+      expensesPaid += paid;
+      expensesCommitment += paid;
+    } else {
+      expensesCommitment += e.amount;
+    }
+  }
+
+  let debtCommitment = 0;
+  let debtPaidCash = 0;
+  for (const m of debtMx) {
+    const pays = debtPaysByDebt.get(m.id) ?? [];
+    if (pays.length > 0) {
+      const cash = sum(pays.map((p) => p.amount + p.insurance));
+      debtPaidCash += cash;
+      debtCommitment += cash;
+    } else {
+      debtCommitment += m.monthlyOutflow;
+    }
+  }
+
+  const totalPaid = expensesPaid + debtPaidCash; // pagos a compromisos (egresos + deudas)
   const totalCommitments = expensesCommitment + debtCommitment;
 
   // El disponible descuenta TODA la salida de caja: compromisos pagados + ocasionales.
