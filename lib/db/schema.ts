@@ -21,7 +21,9 @@ export const incomes = sqliteTable("incomes", {
 /**
  * Ledger de ingresos recibidos por mes ("YYYY-MM").
  * Guarda cuánto entró realmente cada mes. `incomeId` nulo = ingreso ocasional
- * que solo existe en ese mes (usa `name` como etiqueta).
+ * que solo existe en ese mes (usa `name` como etiqueta). Puede haber VARIAS
+ * filas por ingreso y mes: cada una es una parte recibida (p. ej. un salario
+ * que llega en dos pagos, el 25 y el 10). El disponible suma todas.
  */
 export const incomeReceipts = sqliteTable("income_receipts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -29,8 +31,9 @@ export const incomeReceipts = sqliteTable("income_receipts", {
   incomeId: integer("income_id").references(() => incomes.id, {
     onDelete: "cascade",
   }),
-  name: text("name"), // etiqueta (para ocasionales o historial)
-  amount: real("amount").notNull(), // monto realmente recibido
+  name: text("name"), // etiqueta (parte, ocasional o historial)
+  amount: real("amount").notNull(), // monto realmente recibido en esta parte
+  paidAt: text("paid_at"), // fecha en que se recibió (ISO), opcional
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),

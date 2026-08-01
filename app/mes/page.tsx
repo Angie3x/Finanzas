@@ -32,7 +32,7 @@ import {
   createIncome,
   updateIncome,
   deleteIncome,
-  setIncomeReceipt,
+  addIncomeReceipt,
   addOccasionalIncome,
   deleteIncomeReceipt,
   registerExpensePayment,
@@ -161,11 +161,18 @@ export default async function MesPage({
     .map(debtMetrics)
     .filter((m) => !m.settled || debtPaysByDebt.has(m.id));
 
-  const receiptByIncome = new Map<number, (typeof receipts)[number]>();
+  // Un ingreso puede tener VARIAS partes recibidas en el mes (p. ej. salario en
+  // dos pagos). Guardamos la lista por ingreso; el disponible suma todas.
+  const receiptsByIncome = new Map<number, typeof receipts>();
   const occasional: typeof receipts = [];
   for (const r of receipts) {
-    if (r.incomeId == null) occasional.push(r);
-    else receiptByIncome.set(r.incomeId, r);
+    if (r.incomeId == null) {
+      occasional.push(r);
+    } else {
+      const list = receiptsByIncome.get(r.incomeId) ?? [];
+      list.push(r);
+      receiptsByIncome.set(r.incomeId, list);
+    }
   }
 
   const paymentsByExpense = new Map<number, typeof payments>();
@@ -337,9 +344,11 @@ export default async function MesPage({
               placeholder="Buscar ingreso…"
               items={[
                 ...incDefs.map((inc) => {
-                const receipt = receiptByIncome.get(inc.id);
+                const parts = receiptsByIncome.get(inc.id) ?? [];
                 const net = netIncome(inc);
-                const received = receipt ? receipt.amount : null;
+                const received = sum(parts.map((p) => p.amount));
+                const hasParts = parts.length > 0;
+                const pending = Math.max(0, net - received);
                 return { key: `inc-${inc.id}`, text: inc.name, node: (
                   <div className="border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -350,10 +359,10 @@ export default async function MesPage({
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-[var(--green)]">
-                          {received != null ? fmt(received) : fmt(net)}
+                          {hasParts ? fmt(received) : fmt(net)}
                         </div>
                         <div className="text-xs text-[var(--muted)]">
-                          {received != null ? "recibido" : "estimado"}
+                          {hasParts ? `recibido · neto ${fmt(net)}` : "estimado"}
                         </div>
                       </div>
                     </div>
@@ -364,30 +373,66 @@ export default async function MesPage({
                       </div>
                     )}
 
+                    {/* Partes recibidas del mes */}
+                    {hasParts && (
+                      <div className="mt-2 space-y-1">
+                        {parts.map((p) => (
+                          <div key={p.id} className="flex items-center justify-between gap-2 text-sm">
+                            <span className="text-[var(--muted)]">
+                              {p.name || "Parte"}
+                              {p.paidAt ? ` · ${dateLabel(p.paidAt)}` : ""}
+                            </span>
+                            <span className="flex items-center gap-2">
+                              <span className="font-medium text-[var(--green)]">{fmt(p.amount)}</span>
+                              <form action={deleteIncomeReceipt}>
+                                <input type="hidden" name="id" value={p.id} />
+                                <button className="btn btn-ghost btn-sm" aria-label="Quitar parte">🗑️</button>
+                              </form>
+                            </span>
+                          </div>
+                        ))}
+                        {pending > 0 && (
+                          <div className="text-xs text-[var(--amber)]">Falta por recibir {fmt(pending)}</div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex gap-2 mt-2 flex-wrap items-start">
                       {inc.active && (
                         <details>
                           <summary className="btn btn-ghost btn-sm list-none inline-block">
-                            {received != null ? "✏️ Ajustar recibido" : "＋ Registrar recibido"}
+                            ＋ Registrar {hasParts ? "otra parte" : "recibido"}
                           </summary>
-                          <form action={setIncomeReceipt} className="flex items-end gap-2 mt-2 flex-wrap">
+                          <form action={addIncomeReceipt} className="grid grid-cols-2 gap-2 mt-2" style={{ minWidth: 260 }}>
                             <input type="hidden" name="month" value={month} />
                             <input type="hidden" name="incomeId" value={inc.id} />
                             <div>
-                              <label className="label">Recibido este mes (COP)</label>
+                              <label className="label">Monto recibido (COP)</label>
                               <input
                                 name="amount"
                                 type="number"
                                 min="0"
                                 step="any"
-                                defaultValue={received != null ? received : Math.round(net)}
+                                defaultValue={pending > 0 ? Math.round(pending) : Math.round(net)}
                                 className="input"
-                                style={{ width: 180 }}
                               />
                             </div>
-                            <SubmitButton>Guardar</SubmitButton>
-                            <CancelButton className="btn btn-ghost btn-sm" />
+                            <div>
+                              <label className="label">Etiqueta (opcional)</label>
+                              <input name="name" className="input" placeholder="Parte del 25, del 10…" />
+                            </div>
+                            <div>
+                              <label className="label">Fecha (opcional)</label>
+                              <input name="paidAt" type="date" className="input" />
+                            </div>
+                            <div className="col-span-2 flex gap-2">
+                              <SubmitButton>Agregar</SubmitButton>
+                              <CancelButton className="btn btn-ghost btn-sm" />
+                            </div>
                           </form>
+                          <p className="text-xs text-[var(--muted)] mt-1">
+                            Si no pones fecha, se registra con la de hoy. Puedes agregar varias partes.
+                          </p>
                         </details>
                       )}
                       <details>

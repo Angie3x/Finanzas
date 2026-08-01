@@ -105,6 +105,24 @@ export async function setIncomeReceipt(formData: FormData) {
   revalidatePath("/");
 }
 
+/**
+ * Agrega una PARTE recibida de un ingreso en un mes (permite varias: un salario
+ * que llega en dos pagos, etc.). Suma al disponible; no reemplaza las anteriores.
+ */
+export async function addIncomeReceipt(formData: FormData) {
+  const month = normalizeMonth(str(formData.get("month")));
+  const incomeId = num(formData.get("incomeId"));
+  await db.insert(incomeReceipts).values({
+    month,
+    incomeId,
+    name: str(formData.get("name")) || null,
+    amount: num(formData.get("amount")),
+    paidAt: str(formData.get("paidAt")) || todayISO(),
+  });
+  revalidatePath("/mes");
+  revalidatePath("/");
+}
+
 /** Agrega un ingreso ocasional que solo existe en ese mes. */
 export async function addOccasionalIncome(formData: FormData) {
   const month = normalizeMonth(str(formData.get("month")));
