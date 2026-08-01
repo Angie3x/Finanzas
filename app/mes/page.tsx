@@ -7,6 +7,7 @@ import {
   incomeReceipts,
   expensePayments,
   occasionalExpenses,
+  monthlyPlans,
   debts,
   debtPayments,
 } from "@/lib/db/schema";
@@ -38,11 +39,85 @@ import {
   deleteExpensePayment,
   addOccasionalExpense,
   deleteOccasionalExpense,
+  setProjectedAmount,
+  setActualAmount,
   registerPayment,
   deleteDebtPayment,
 } from "@/lib/actions";
 
 export const dynamic = "force-dynamic";
+
+/** Editor compacto de cuota Proyectada (manual) y Real (corte) por ítem/mes. */
+function PlanEditor({
+  month,
+  kind,
+  refId,
+  projected,
+  actual,
+  computed,
+}: {
+  month: string;
+  kind: "deuda" | "egreso";
+  refId: number;
+  projected: number | null;
+  actual: number | null;
+  computed: number;
+}) {
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-2">
+      {/* Proyectada */}
+      <div className="rounded-lg border border-[var(--border)] px-2 py-1.5">
+        <div className="text-xs text-[var(--muted)]">Proyectada</div>
+        <div className="font-semibold text-sm">
+          {projected != null ? fmt(projected) : <span className="text-[var(--muted)]">—</span>}
+        </div>
+        <details>
+          <summary className="btn btn-ghost btn-sm list-none inline-block mt-1">✏️ Fijar</summary>
+          <form action={setProjectedAmount} className="flex items-end gap-1 mt-1">
+            <input type="hidden" name="month" value={month} />
+            <input type="hidden" name="kind" value={kind} />
+            <input type="hidden" name="refId" value={refId} />
+            <input
+              name="amount"
+              type="number"
+              min="0"
+              step="any"
+              defaultValue={projected ?? Math.round(computed)}
+              className="input"
+              style={{ width: 130 }}
+            />
+            <SubmitButton>OK</SubmitButton>
+          </form>
+        </details>
+      </div>
+      {/* Real (corte) */}
+      <div className="rounded-lg border border-[var(--border)] px-2 py-1.5">
+        <div className="text-xs text-[var(--muted)]">Real (corte)</div>
+        <div className="font-semibold text-sm">
+          {actual != null ? fmt(actual) : <span className="text-[var(--muted)]">pendiente de corte</span>}
+        </div>
+        <details>
+          <summary className="btn btn-ghost btn-sm list-none inline-block mt-1">✏️ Registrar</summary>
+          <form action={setActualAmount} className="flex items-end gap-1 mt-1">
+            <input type="hidden" name="month" value={month} />
+            <input type="hidden" name="kind" value={kind} />
+            <input type="hidden" name="refId" value={refId} />
+            <input
+              name="amount"
+              type="number"
+              min="0"
+              step="any"
+              defaultValue={actual ?? projected ?? Math.round(computed)}
+              className="input"
+              style={{ width: 130 }}
+            />
+            <SubmitButton>OK</SubmitButton>
+          </form>
+        </details>
+      </div>
+    </div>
+  );
+}
 
 export default async function MesPage({
   searchParams,
@@ -52,7 +127,7 @@ export default async function MesPage({
   const { mes } = await searchParams;
   const month = normalizeMonth(mes);
 
-  const [incDefs, expDefs, debtDefs, receipts, payments, occExpenses, debtPays] =
+  const [incDefs, expDefs, debtDefs, receipts, payments, occExpenses, plans, debtPays] =
     await Promise.all([
       db.select().from(incomes),
       db.select().from(fixedExpenses),
@@ -60,10 +135,17 @@ export default async function MesPage({
       db.select().from(incomeReceipts).where(eq(incomeReceipts.month, month)),
       db.select().from(expensePayments).where(eq(expensePayments.month, month)),
       db.select().from(occasionalExpenses).where(eq(occasionalExpenses.month, month)),
+      db.select().from(monthlyPlans).where(eq(monthlyPlans.month, month)),
       db.select().from(debtPayments).where(eq(debtPayments.month, month)),
     ]);
 
   const activeExp = expDefs.filter((e) => e.active);
+
+  // Plan del mes (cuota proyectada / real) por ítem.
+  const planByKey = new Map<string, (typeof plans)[number]>();
+  for (const p of plans) planByKey.set(`${p.kind}-${p.refId}`, p);
+  const debtPlan = (id: number) => planByKey.get(`deuda-${id}`);
+  const expPlan = (id: number) => planByKey.get(`egreso-${id}`);
 
   const debtPaysByDebt = new Map<number, typeof debtPays>();
   for (const p of debtPays) {
@@ -101,6 +183,17 @@ export default async function MesPage({
   // el total al desaparecer su cuota futura); para lo pendiente, el monto
   // esperado. Con esto "falta por pagar" refleja exactamente lo que queda sin
   // pagar y el progreso nunca supera el 100%.
+  // Monto esperado del mes por ítem: cuota real (corte) si existe, si no la
+  // proyectada (manual), y si no, el valor calculado/base como respaldo.
+  const expExpected = (e: (typeof activeExp)[number]) => {
+    const p = expPlan(e.id);
+    return p?.actual ?? p?.projected ?? e.amount;
+  };
+  const debtExpected = (m: (typeof debtMx)[number]) => {
+    const p = debtPlan(m.id);
+    return p?.actual ?? p?.projected ?? m.monthlyOutflow;
+  };
+
   let expensesCommitment = 0;
   let expensesPaid = 0;
   for (const e of activeExp) {
@@ -110,7 +203,7 @@ export default async function MesPage({
       expensesPaid += paid;
       expensesCommitment += paid;
     } else {
-      expensesCommitment += e.amount;
+      expensesCommitment += expExpected(e);
     }
   }
 
@@ -123,7 +216,7 @@ export default async function MesPage({
       debtPaidCash += cash;
       debtCommitment += cash;
     } else {
-      debtCommitment += m.monthlyOutflow;
+      debtCommitment += debtExpected(m);
     }
   }
 
@@ -391,6 +484,8 @@ export default async function MesPage({
                 const pays = paymentsByExpense.get(e.id) ?? [];
                 const paidTotal = sum(pays.map((p) => p.amount));
                 const isPaid = pays.length > 0;
+                const plan = expPlan(e.id);
+                const expected = expExpected(e);
                 return { key: e.id, text: `${e.name} ${e.category}`, node: (
                   <div className={`border-b border-[var(--border)] pb-3 last:border-0 last:pb-0 ${isPaid ? "opacity-90" : ""}`}>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -406,13 +501,24 @@ export default async function MesPage({
                       </div>
                       <div className="text-right">
                         <div className={`font-semibold ${isPaid ? "text-[var(--muted)] line-through" : ""}`}>
-                          {fmt(e.amount)}
+                          {fmt(expected)}
                         </div>
-                        {isPaid && paidTotal !== e.amount && (
+                        {isPaid && paidTotal !== expected && (
                           <div className="text-xs text-[var(--green)]">pagado {fmt(paidTotal)}</div>
                         )}
                       </div>
                     </div>
+
+                    {!isPaid && (
+                      <PlanEditor
+                        month={month}
+                        kind="egreso"
+                        refId={e.id}
+                        projected={plan?.projected ?? null}
+                        actual={plan?.actual ?? null}
+                        computed={e.amount}
+                      />
+                    )}
 
                     {isPaid ? (
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -440,7 +546,7 @@ export default async function MesPage({
                               type="number"
                               min="0"
                               step="any"
-                              defaultValue={Math.round(e.amount)}
+                              defaultValue={Math.round(expected)}
                               className="input"
                               style={{ width: 160 }}
                             />
@@ -448,7 +554,9 @@ export default async function MesPage({
                           <SubmitButton>Registrar</SubmitButton>
                           <CancelButton className="btn btn-ghost btn-sm" />
                         </form>
-                        <p className="text-xs text-[var(--muted)] mt-1">Se registra con la fecha de hoy.</p>
+                        <p className="text-xs text-[var(--muted)] mt-1">
+                          Toma la cuota real (o proyectada) y se registra con la fecha de hoy.
+                        </p>
                       </details>
                     )}
                   </div>
@@ -538,6 +646,8 @@ export default async function MesPage({
               const pays = debtPaysByDebt.get(m.id) ?? [];
               const isPaid = pays.length > 0;
               const paidCash = sum(pays.map((p) => p.amount + p.insurance));
+              const plan = debtPlan(m.id);
+              const expected = debtExpected(m);
               return { key: m.id, text: m.name, node: (
                 <div className="border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -552,14 +662,25 @@ export default async function MesPage({
                     </div>
                     <div className="text-right">
                       <div className={`font-semibold ${isPaid ? "text-[var(--muted)] line-through" : ""}`}>
-                        {fmt(m.monthlyOutflow)}
+                        {fmt(isPaid ? paidCash : expected)}
                       </div>
                       <div className="text-xs text-[var(--muted)]">
-                        cuota {fmt(m.effectivePayment)}
+                        calc. {fmt(m.effectivePayment)}
                         {m.insurance > 0 ? ` + seguro ${fmt(m.insurance)}` : ""}
                       </div>
                     </div>
                   </div>
+
+                  {!isPaid && (
+                    <PlanEditor
+                      month={month}
+                      kind="deuda"
+                      refId={m.id}
+                      projected={plan?.projected ?? null}
+                      actual={plan?.actual ?? null}
+                      computed={m.monthlyOutflow}
+                    />
+                  )}
 
                   {isPaid ? (
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -587,7 +708,7 @@ export default async function MesPage({
                             type="number"
                             min="0"
                             step="any"
-                            defaultValue={Math.round(m.effectivePayment)}
+                            defaultValue={Math.round(expected)}
                             className="input"
                             style={{ width: 160 }}
                           />

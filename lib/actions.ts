@@ -10,6 +10,7 @@ import {
   incomeReceipts,
   expensePayments,
   occasionalExpenses,
+  monthlyPlans,
   debtPayments,
 } from "./db/schema";
 import {
@@ -208,6 +209,78 @@ export async function deleteOccasionalExpense(formData: FormData) {
   await db.delete(occasionalExpenses).where(eq(occasionalExpenses.id, num(formData.get("id"))));
   revalidatePath("/mes");
   revalidatePath("/historial");
+  revalidatePath("/");
+}
+
+/* ────────────────  PLAN MENSUAL: CUOTA PROYECTADA / REAL  ──────────────── */
+
+type PlanKind = "deuda" | "egreso";
+
+/** Upsert de un campo del plan mensual (projected|actual) para un ítem y mes. */
+async function upsertMonthlyPlan(
+  month: string,
+  kind: PlanKind,
+  refId: number,
+  field: "projected" | "actual",
+  raw: string
+) {
+  const value = raw.trim() === "" ? null : num(raw);
+  const existing = await db
+    .select()
+    .from(monthlyPlans)
+    .where(
+      and(
+        eq(monthlyPlans.month, month),
+        eq(monthlyPlans.kind, kind),
+        eq(monthlyPlans.refId, refId)
+      )
+    );
+
+  if (existing[0]) {
+    // Si ambos campos quedan vacíos, elimina la fila.
+    const other = field === "projected" ? existing[0].actual : existing[0].projected;
+    if (value == null && other == null) {
+      await db.delete(monthlyPlans).where(eq(monthlyPlans.id, existing[0].id));
+    } else {
+      await db
+        .update(monthlyPlans)
+        .set({ [field]: value })
+        .where(eq(monthlyPlans.id, existing[0].id));
+    }
+  } else if (value != null) {
+    await db.insert(monthlyPlans).values({ month, kind, refId, [field]: value });
+  }
+}
+
+function planKind(v: FormDataEntryValue | null): PlanKind {
+  return str(v) === "egreso" ? "egreso" : "deuda";
+}
+
+/** Fija (o borra, si viene vacío) la cuota PROYECTADA de un ítem para el mes. */
+export async function setProjectedAmount(formData: FormData) {
+  const month = normalizeMonth(str(formData.get("month")));
+  await upsertMonthlyPlan(
+    month,
+    planKind(formData.get("kind")),
+    num(formData.get("refId")),
+    "projected",
+    String(formData.get("amount") ?? "")
+  );
+  revalidatePath("/mes");
+  revalidatePath("/");
+}
+
+/** Fija (o borra) la cuota REAL del corte de un ítem para el mes. */
+export async function setActualAmount(formData: FormData) {
+  const month = normalizeMonth(str(formData.get("month")));
+  await upsertMonthlyPlan(
+    month,
+    planKind(formData.get("kind")),
+    num(formData.get("refId")),
+    "actual",
+    String(formData.get("amount") ?? "")
+  );
+  revalidatePath("/mes");
   revalidatePath("/");
 }
 

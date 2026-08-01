@@ -137,8 +137,28 @@ export const debtPayments = sqliteTable("debt_payments", {
     .default(sql`(datetime('now'))`),
 });
 
+/**
+ * Plan mensual por ítem (deuda o egreso) y mes ("YYYY-MM"): la cuota
+ * PROYECTADA (estimada a mano) y la cuota REAL (la del corte). El pago efectivo
+ * se sigue registrando en debt_payments / expense_payments (con fecha automática).
+ * `refId` apunta a debts.id (kind="deuda") o fixed_expenses.id (kind="egreso").
+ * Debe haber a lo sumo una fila por (month, kind, refId).
+ */
+export const monthlyPlans = sqliteTable("monthly_plans", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  month: text("month").notNull(), // "YYYY-MM"
+  kind: text("kind", { enum: ["deuda", "egreso"] }).notNull(),
+  refId: integer("ref_id").notNull(),
+  projected: real("projected"), // cuota proyectada (manual)
+  actual: real("actual"), // cuota real del corte
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 export type Income = typeof incomes.$inferSelect;
 export type FixedExpense = typeof fixedExpenses.$inferSelect;
+export type MonthlyPlan = typeof monthlyPlans.$inferSelect;
 export type Debt = typeof debts.$inferSelect;
 export type IncomeReceipt = typeof incomeReceipts.$inferSelect;
 export type ExpensePayment = typeof expensePayments.$inferSelect;
