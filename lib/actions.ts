@@ -9,6 +9,7 @@ import {
   debts,
   incomeReceipts,
   expensePayments,
+  occasionalExpenses,
   debtPayments,
 } from "./db/schema";
 import {
@@ -182,6 +183,31 @@ export async function registerExpensePayment(formData: FormData) {
 export async function deleteExpensePayment(formData: FormData) {
   await db.delete(expensePayments).where(eq(expensePayments.id, num(formData.get("id"))));
   revalidatePath("/mes");
+  revalidatePath("/");
+}
+
+/* ────────────────  GASTOS OCASIONALES DEL MES  ──────────────── */
+
+/** Registra un gasto ocasional (puntual) en un mes; reduce el disponible. */
+export async function addOccasionalExpense(formData: FormData) {
+  const month = normalizeMonth(str(formData.get("month")));
+  await db.insert(occasionalExpenses).values({
+    month,
+    name: str(formData.get("name")) || "Gasto ocasional",
+    amount: num(formData.get("amount")),
+    category: str(formData.get("category")) || null,
+    paidAt: str(formData.get("paidAt")) || todayISO(),
+  });
+  revalidatePath("/mes");
+  revalidatePath("/historial");
+  revalidatePath("/");
+}
+
+/** Elimina un gasto ocasional del mes. */
+export async function deleteOccasionalExpense(formData: FormData) {
+  await db.delete(occasionalExpenses).where(eq(occasionalExpenses.id, num(formData.get("id"))));
+  revalidatePath("/mes");
+  revalidatePath("/historial");
   revalidatePath("/");
 }
 

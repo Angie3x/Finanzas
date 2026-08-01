@@ -6,6 +6,7 @@ import {
   fixedExpenses,
   incomeReceipts,
   expensePayments,
+  occasionalExpenses,
   debts,
   debtPayments,
 } from "@/lib/db/schema";
@@ -35,6 +36,8 @@ import {
   deleteIncomeReceipt,
   registerExpensePayment,
   deleteExpensePayment,
+  addOccasionalExpense,
+  deleteOccasionalExpense,
   registerPayment,
   deleteDebtPayment,
 } from "@/lib/actions";
@@ -49,13 +52,14 @@ export default async function MesPage({
   const { mes } = await searchParams;
   const month = normalizeMonth(mes);
 
-  const [incDefs, expDefs, debtDefs, receipts, payments, debtPays] =
+  const [incDefs, expDefs, debtDefs, receipts, payments, occExpenses, debtPays] =
     await Promise.all([
       db.select().from(incomes),
       db.select().from(fixedExpenses),
       db.select().from(debts),
       db.select().from(incomeReceipts).where(eq(incomeReceipts.month, month)),
       db.select().from(expensePayments).where(eq(expensePayments.month, month)),
+      db.select().from(occasionalExpenses).where(eq(occasionalExpenses.month, month)),
       db.select().from(debtPayments).where(eq(debtPayments.month, month)),
     ]);
 
@@ -92,13 +96,15 @@ export default async function MesPage({
   const totalReceived = sum(receipts.map((r) => r.amount));
   const expensesPaid = sum(payments.map((p) => p.amount));
   const debtPaidCash = sum(debtPays.map((p) => p.amount + p.insurance));
-  const totalPaid = expensesPaid + debtPaidCash;
+  const totalPaid = expensesPaid + debtPaidCash; // pagos a compromisos (egresos + deudas)
+  const occasionalSpent = sum(occExpenses.map((o) => o.amount)); // gastos ocasionales del mes
 
   const expensesCommitment = sum(activeExp.map((e) => e.amount));
   const debtCommitment = sum(debtMx.map((m) => m.monthlyOutflow));
   const totalCommitments = expensesCommitment + debtCommitment;
 
-  const disponible = totalReceived - totalPaid;
+  // El disponible descuenta TODA la salida de caja: compromisos pagados + ocasionales.
+  const disponible = totalReceived - totalPaid - occasionalSpent;
   const pendiente = totalCommitments - totalPaid;
   const paidPct = totalCommitments > 0 ? (totalPaid / totalCommitments) * 100 : 0;
 
@@ -134,10 +140,16 @@ export default async function MesPage({
       )}
 
       {/* Resumen del mes */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
         <Stat label="Recibido este mes" value={totalReceived} tone="green" />
         <Stat label="Compromisos del mes" value={totalCommitments} tone="amber" hint="Egresos + deudas" />
-        <Stat label="Pagado hasta ahora" value={totalPaid} />
+        <Stat label="Pagado hasta ahora" value={totalPaid} hint="A compromisos" />
+        <Stat
+          label="Gastos ocasionales"
+          value={occasionalSpent}
+          tone={occasionalSpent > 0 ? "amber" : "default"}
+          hint="Compras puntuales"
+        />
         <Stat
           label="Falta por pagar"
           value={Math.max(0, pendiente)}
@@ -148,7 +160,7 @@ export default async function MesPage({
           label="Disponible ahora"
           value={disponible}
           tone={disponible >= 0 ? "primary" : "red"}
-          hint="Recibido − pagado"
+          hint="Recibido − pagado − ocasionales"
         />
       </div>
 
@@ -419,6 +431,76 @@ export default async function MesPage({
           </div>
         </div>
       )}
+
+      {/* ─────────── GASTOS OCASIONALES ─────────── */}
+      <div className="card mt-4">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="font-semibold">💸 Gastos ocasionales del mes</div>
+          {occasionalSpent > 0 && (
+            <span className="text-sm font-semibold text-[var(--red)]">
+              − {fmt(occasionalSpent)}
+            </span>
+          )}
+        </div>
+
+        <details className="mb-3">
+          <summary className="btn btn-ghost btn-sm list-none inline-block">＋ Agregar gasto ocasional</summary>
+          <form action={addOccasionalExpense} className="grid grid-cols-2 gap-2 mt-2">
+            <input type="hidden" name="month" value={month} />
+            <div className="col-span-2">
+              <label className="label">Concepto</label>
+              <input name="name" required className="input" placeholder="Regalo, viaje, imprevisto…" />
+            </div>
+            <div>
+              <label className="label">Monto (COP)</label>
+              <input name="amount" type="number" min="0" step="any" required className="input" placeholder="150000" />
+            </div>
+            <div>
+              <label className="label">Categoría (opcional)</label>
+              <input name="category" className="input" placeholder="Compras, salud…" />
+            </div>
+            <div className="col-span-2 flex gap-2">
+              <SubmitButton>Agregar</SubmitButton>
+              <CancelButton className="btn btn-ghost btn-sm" />
+            </div>
+          </form>
+          <p className="text-xs text-[var(--muted)] mt-1">
+            Se registra con la fecha de hoy y se descuenta del disponible.
+          </p>
+        </details>
+
+        {occExpenses.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">Sin gastos ocasionales este mes.</p>
+        ) : (
+          <FilterList
+            placeholder="Buscar gasto ocasional…"
+            items={occExpenses.map((o) => ({
+              key: o.id,
+              text: `${o.name} ${o.category ?? ""}`,
+              node: (
+                <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-3 last:border-0 last:pb-0">
+                  <div>
+                    <div className="font-medium flex items-center gap-2 flex-wrap">
+                      {o.name}
+                      {o.category && <Badge tone="amber">{o.category}</Badge>}
+                    </div>
+                    {o.paidAt && (
+                      <div className="text-xs text-[var(--muted)]">{dateLabel(o.paidAt)}</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[var(--red)]">− {fmt(o.amount)}</span>
+                    <form action={deleteOccasionalExpense}>
+                      <input type="hidden" name="id" value={o.id} />
+                      <button className="btn btn-ghost btn-sm" aria-label="Quitar gasto ocasional">🗑️</button>
+                    </form>
+                  </div>
+                </div>
+              ),
+            }))}
+          />
+        )}
+      </div>
 
       {debtMx.length > 0 && (
         <div className="card mt-4">

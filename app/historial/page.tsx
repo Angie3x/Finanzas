@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { incomeReceipts, expensePayments, debtPayments } from "@/lib/db/schema";
+import {
+  incomeReceipts,
+  expensePayments,
+  occasionalExpenses,
+  debtPayments,
+} from "@/lib/db/schema";
 import { fmt } from "@/lib/format";
 import { sum, monthLabel, monthLabelShort } from "@/lib/finance";
 import { PageHeader, Stat, EmptyState } from "@/components/ui";
@@ -11,9 +16,10 @@ export const dynamic = "force-dynamic";
 type Agg = { recibido: number; egresos: number; deudas: number };
 
 export default async function HistorialPage() {
-  const [receipts, expPays, debtPays] = await Promise.all([
+  const [receipts, expPays, occExps, debtPays] = await Promise.all([
     db.select().from(incomeReceipts),
     db.select().from(expensePayments),
+    db.select().from(occasionalExpenses),
     db.select().from(debtPayments),
   ]);
 
@@ -28,6 +34,7 @@ export default async function HistorialPage() {
   };
   for (const r of receipts) ensure(r.month).recibido += r.amount;
   for (const p of expPays) ensure(p.month).egresos += p.amount;
+  for (const o of occExps) ensure(o.month).egresos += o.amount; // ocasionales cuentan como egreso del mes
   for (const p of debtPays) ensure(p.month).deudas += p.amount + p.insurance;
 
   const monthsAsc = [...map.keys()].sort();

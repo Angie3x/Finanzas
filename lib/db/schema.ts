@@ -53,6 +53,23 @@ export const expensePayments = sqliteTable("expense_payments", {
     .default(sql`(datetime('now'))`),
 });
 
+/**
+ * Gastos ocasionales de un mes ("YYYY-MM"): compras o pagos puntuales que no son
+ * egresos fijos ni deudas. Reducen el disponible del mes; no son un compromiso
+ * recurrente. Se registran con la fecha de hoy por defecto.
+ */
+export const occasionalExpenses = sqliteTable("occasional_expenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  month: text("month").notNull(), // "YYYY-MM"
+  name: text("name").notNull(),
+  amount: real("amount").notNull(), // monto gastado en COP
+  category: text("category"), // categoría opcional
+  paidAt: text("paid_at"), // fecha del gasto (ISO), opcional
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 /** Egresos fijos mensuales (arriendo, servicios, suscripciones, etc.) */
 export const fixedExpenses = sqliteTable("fixed_expenses", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -125,4 +142,5 @@ export type FixedExpense = typeof fixedExpenses.$inferSelect;
 export type Debt = typeof debts.$inferSelect;
 export type IncomeReceipt = typeof incomeReceipts.$inferSelect;
 export type ExpensePayment = typeof expensePayments.$inferSelect;
+export type OccasionalExpense = typeof occasionalExpenses.$inferSelect;
 export type DebtPayment = typeof debtPayments.$inferSelect;
